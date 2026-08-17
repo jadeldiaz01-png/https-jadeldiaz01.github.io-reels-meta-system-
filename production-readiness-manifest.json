@@ -1,27 +1,30 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "environment": "qualification",
   "generated_for": "P0-C",
   "decision": "LIVE_PILOT_NO_GO",
   "external_execution_enabled": false,
-  "baseline_evidence": {
+  "evidence": {
     "p0b_github_actions_run_id": 32074961837,
-    "p0b_conclusion": "success"
+    "p0b_conclusion": "success",
+    "p0c_github_actions_run_id": 32076479296,
+    "p0c_job": "p0c",
+    "p0c_conclusion": "success"
   },
   "required_gates": {
-    "unit_and_integration_tests": "PENDING_P0C_CI",
+    "unit_and_integration_tests": "PASS",
     "postgres_durability": "PASS_SANDBOX",
     "idempotency": "PASS_SANDBOX",
-    "unknown_reconciliation": "PENDING_P0C_RESTART_RECOVERY_CI",
+    "unknown_reconciliation": "PASS_RESTART_RECOVERY_SANDBOX",
     "opa_fail_closed": "PASS_SANDBOX",
     "openbao_production_identity": "POLICY_AND_TRANSIT_CLIENT_IMPLEMENTED_EXTERNAL_IDENTITY_EVIDENCE_PENDING",
     "evidence_ledger": "PASS_SANDBOX",
-    "kill_switches": "PENDING_P0C_DB_E2E_CI",
+    "kill_switches": "PASS_DB_BACKED_SANDBOX",
     "opentelemetry": "PASS_SANDBOX_LIVE_SLO_EVIDENCE_PENDING",
     "meta_test_e2e": "NOT_RUN_TEST_CREDENTIALS_REQUIRED",
     "stripe_test_e2e": "NOT_RUN_TEST_ACCOUNT_AND_EVIDENCE_ENDPOINT_REQUIRED",
     "backup_restore_pitr": "DRILL_IMPLEMENTED_NOT_RUN_ISOLATED_STAGING_REQUIRED",
-    "chaos_restart_recovery": "PENDING_P0C_CI",
+    "chaos_restart_recovery": "PASS_LOST_RESPONSE_PROCESS_RESTART_SANDBOX",
     "signed_evidence_bundle": "OPENBAO_TRANSIT_SIGNER_IMPLEMENTED_NOT_RUN",
     "human_go_live_approval": "NOT_GRANTED"
   },
