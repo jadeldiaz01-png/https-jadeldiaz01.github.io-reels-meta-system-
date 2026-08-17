@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: revenue_engine
+      POSTGRES_USER: engine
+      POSTGRES_PASSWORD: sandbox-only-change-me
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engine -d revenue_engine"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/migrations/001_p0b.sql:/docker-entrypoint-initdb.d/001_p0b.sql:ro
+
+  opa:
+    image: openpolicyagent/opa:1.17.0
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+    volumes:
+      - ./policies:/policies:ro
+    healthcheck:
+      test: ["CMD", "/opa", "eval", "data.revenue_engine.authz.allow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  openbao:
+    image: openbao/openbao:2.6.0
+    command: ["server", "-dev", "-dev-root-token-id=sandbox-root"]
+    environment:
+      BAO_ADDR: http://0.0.0.0:8200
+    cap_add: ["IPC_LOCK"]
+    ports: ["8200:8200"]
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.132.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports: ["4317:4317", "4318:4318"]
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://engine:sandbox-only-change-me@postgres:5432/revenue_engine
+      OPA_URL: http://opa:8181
+      BAO_ADDR: http://openbao:8200
+      ENVIRONMENT: sandbox
+      EXTERNAL_EXECUTION_ENABLED: "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opa:
+        condition: service_started
+      openbao:
+        condition: service_started
+    ports: ["8000:8000"]
+
+volumes:
+  pgdata:
