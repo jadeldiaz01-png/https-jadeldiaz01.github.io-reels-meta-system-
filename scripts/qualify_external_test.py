@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import httpx
 
@@ -51,21 +52,26 @@ async def stripe_test() -> None:
     if not key.startswith("sk_test_"):
         emit("stripe_test_e2e", "FAIL", {"reason": "non_test_key_rejected"})
         return
-    async with httpx.AsyncClient(timeout=15.0, auth=(key, "")) as client:
-        account = await client.get("https://api.stripe.com/v1/account")
+    async with httpx.AsyncClient(timeout=15.0, auth=(key, ""), base_url="https://api.stripe.com") as stripe:
+        account = await stripe.get("/v1/account")
         account.raise_for_status()
         if account.json().get("livemode") is True:
             emit("stripe_test_e2e", "FAIL", {"reason": "livemode_account_rejected"})
             return
-        if not endpoint:
-            emit("stripe_test_e2e", "NOT_RUN", {"reason": "test_account_verified_but_evidence_endpoint_missing"})
-            return
-        evidence = await client.get(endpoint)
+    if not endpoint:
+        emit("stripe_test_e2e", "NOT_RUN", {"reason": "test_account_verified_but_evidence_endpoint_missing"})
+        return
+    parsed = urlparse(endpoint)
+    if parsed.scheme != "https" or not parsed.hostname:
+        emit("stripe_test_e2e", "FAIL", {"reason": "https_evidence_endpoint_required"})
+        return
+    async with httpx.AsyncClient(timeout=15.0) as evidence_client:
+        evidence = await evidence_client.get(endpoint)
         evidence.raise_for_status()
-        body = evidence.json()
-        required = {"signed_webhook_verified", "receipt_deduplicated", "fulfillment_idempotent", "settlement_reconciled"}
-        passed = all(body.get(name) is True for name in required)
-        emit("stripe_test_e2e", "PASS" if passed else "FAIL", {name: bool(body.get(name)) for name in sorted(required)})
+    body = evidence.json()
+    required = {"signed_webhook_verified", "receipt_deduplicated", "fulfillment_idempotent", "settlement_reconciled"}
+    passed = all(body.get(name) is True for name in required)
+    emit("stripe_test_e2e", "PASS" if passed else "FAIL", {name: bool(body.get(name)) for name in sorted(required)})
 
 
 async def main() -> None:
