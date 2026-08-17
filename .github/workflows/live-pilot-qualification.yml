@@ -12,6 +12,11 @@ on:
         required: true
         default: false
         type: boolean
+      recovery_target_time:
+        description: "ISO-8601 PITR target; required when run_pitr_drill=true"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -91,9 +96,11 @@ jobs:
       PG_BASEBACKUP_DIR: ${{ vars.PITR_BASEBACKUP_DIR }}
       PG_RESTORE_DIR: ${{ vars.PITR_RESTORE_DIR }}
       WAL_ARCHIVE_DIR: ${{ vars.PITR_WAL_ARCHIVE_DIR }}
-      RECOVERY_TARGET_TIME: ${{ inputs.recovery_target_time || '' }}
+      RECOVERY_TARGET_TIME: ${{ inputs.recovery_target_time }}
     steps:
       - uses: actions/checkout@v4
+      - name: Require explicit recovery target
+        run: test -n "$RECOVERY_TARGET_TIME"
       - name: Prepare isolated PostgreSQL 18 PITR restore
         run: bash infra/postgres/pitr-drill.sh | tee pitr-evidence.jsonl
       - uses: actions/upload-artifact@v4
