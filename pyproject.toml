@@ -1,6 +1,6 @@
 [project]
 name = "autonomous-course-reels-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "Policy-controlled autonomous course, reels and fulfillment engine"
 requires-python = ">=3.12"
 dependencies = [
@@ -11,6 +11,10 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "httpx>=0.28,<1",
   "pyyaml>=6.0,<7",
+  "opentelemetry-api>=1.36,<2",
+  "opentelemetry-sdk>=1.36,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.36,<2",
+  "opentelemetry-instrumentation-fastapi>=0.57b0,<1",
 ]
 
 [project.optional-dependencies]
