@@ -1,0 +1,25 @@
+external_execution_enabled: false
+human_approval_required_for:
+  - create_offer
+  - change_price
+  - legal_claim
+  - account_change
+  - credential_change
+forbidden:
+  - captcha_bypass
+  - anti_bot_bypass
+  - credential_harvesting
+  - identity_or_kyc_automation
+  - fake_engagement
+  - spam
+  - impersonation
+  - unauthorized_scraping
+  - copyright_unverified_publish
+controls:
+  fail_closed: true
+  require_idempotency: true
+  require_reconciliation: true
+  official_apis_only: true
+  evidence_ledger_required: true
+metrics:
+  primary: net_settled_revenue_per_human_hour
