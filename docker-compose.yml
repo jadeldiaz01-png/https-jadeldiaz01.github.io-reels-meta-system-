@@ -34,7 +34,7 @@ services:
     ports: ["8200:8200"]
 
   otel-collector:
-    image: otel/opentelemetry-collector:0.132.0
+    image: otel/opentelemetry-collector:0.157.0
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
