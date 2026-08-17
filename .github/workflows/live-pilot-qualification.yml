@@ -1,0 +1,102 @@
+name: live-pilot-qualification
+on:
+  workflow_dispatch:
+    inputs:
+      run_external_test:
+        description: "Run Meta/Stripe TEST E2E using protected environment secrets"
+        required: true
+        default: false
+        type: boolean
+      run_pitr_drill:
+        description: "Run destructive PITR drill on isolated qualification runner"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  repository-qualification:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: revenue_engine
+          POSTGRES_USER: engine
+          POSTGRES_PASSWORD: qualification-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U engine -d revenue_engine"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://engine:qualification-only@localhost:5432/revenue_engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -e '.[test]'
+      - name: Apply schemas
+        run: |
+          python - <<'PY'
+          import psycopg
+          with psycopg.connect('postgresql://engine:qualification-only@localhost:5432/revenue_engine', autocommit=True) as conn:
+              for path in ('db/migrations/001_p0b.sql','db/migrations/002_p0c.sql'):
+                  for statement in open(path, encoding='utf-8').read().split(';'):
+                      if statement.strip(): conn.execute(statement)
+          PY
+      - run: pytest -q tests/test_p0c_qualification.py
+
+  external-test:
+    if: ${{ inputs.run_external_test }}
+    needs: repository-qualification
+    runs-on: ubuntu-latest
+    environment: live-pilot-qualification
+    env:
+      META_TEST_ACCESS_TOKEN: ${{ secrets.META_TEST_ACCESS_TOKEN }}
+      META_TEST_IG_USER_ID: ${{ secrets.META_TEST_IG_USER_ID }}
+      META_GRAPH_VERSION: ${{ vars.META_GRAPH_VERSION }}
+      META_TEST_VIDEO_URL: ${{ vars.META_TEST_VIDEO_URL }}
+      STRIPE_TEST_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+      STRIPE_TEST_EVIDENCE_ENDPOINT: ${{ vars.STRIPE_TEST_EVIDENCE_ENDPOINT }}
+      BAO_ADDR: ${{ vars.BAO_ADDR }}
+      BAO_TOKEN: ${{ secrets.BAO_QUALIFICATION_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -e .
+      - name: Execute TEST providers and record evidence
+        run: python scripts/qualify_external_test.py | tee external-evidence.jsonl
+      - name: Sign evidence with OpenBao Transit
+        run: python scripts/sign_evidence.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-live-pilot-test-evidence
+          path: signed-evidence-bundle.json
+          if-no-files-found: error
+
+  pitr-drill:
+    if: ${{ inputs.run_pitr_drill }}
+    needs: repository-qualification
+    runs-on: [self-hosted, linux, x64, live-pilot-qualifier]
+    environment: live-pilot-qualification
+    env:
+      ALLOW_DESTRUCTIVE_PITR_DRILL: "true"
+      PGHOST: ${{ vars.PITR_PGHOST }}
+      PGPORT: ${{ vars.PITR_PGPORT }}
+      PGUSER: ${{ vars.PITR_PGUSER }}
+      PGDATA_SOURCE: ${{ vars.PITR_PGDATA_SOURCE }}
+      PG_BASEBACKUP_DIR: ${{ vars.PITR_BASEBACKUP_DIR }}
+      PG_RESTORE_DIR: ${{ vars.PITR_RESTORE_DIR }}
+      WAL_ARCHIVE_DIR: ${{ vars.PITR_WAL_ARCHIVE_DIR }}
+      RECOVERY_TARGET_TIME: ${{ inputs.recovery_target_time || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare isolated PostgreSQL 18 PITR restore
+        run: bash infra/postgres/pitr-drill.sh | tee pitr-evidence.jsonl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pitr-drill-evidence
+          path: pitr-evidence.jsonl
