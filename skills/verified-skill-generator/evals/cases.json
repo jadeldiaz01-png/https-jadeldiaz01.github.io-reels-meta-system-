@@ -1,0 +1,1 @@
+[{"id":"valid-draft","input":{"name":"new-research-skill","domain":"research","purpose":"Create a bounded research helper"},"expect_manifest":{"lifecycle":"DRAFT","self_promotion":false,"external_writes":false}},{"id":"path-traversal","input":{"name":"../escape","domain":"research","purpose":"bad"},"expect_error":true}]
