@@ -4,16 +4,16 @@ import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.skills_runtime.approval import PostgresApprovalService
-from app.skills_runtime.bundle_store import BundleAttestation, PostgresBundleStore
+from app.skills_runtime.bundle_store import BundleAttestation, PostgresBundleStore, manifest_digest
 from app.skills_runtime.controls import PostgresRuntimeControls
 from app.skills_runtime.database import create_engine_from_env
 from app.skills_runtime.evidence import PostgresEvidenceLedger
 from app.skills_runtime.execution import SkillExecutionAuthorizer
 from app.skills_runtime.lifecycle import SkillLifecycle
-from app.skills_runtime.models import SkillRecord, SkillStage
+from app.skills_runtime.models import SkillIdentity, SkillRecord, SkillStage
 from app.skills_runtime.opa import OpaSkillPolicyClient
 from app.skills_runtime.openbao import OpenBaoTransitSigner
 from app.skills_runtime.registry import PostgresSkillRegistry
@@ -48,10 +48,32 @@ def actor(
     return Actor(subject=x_authenticated_subject, actor_type=x_actor_type)
 
 
+def require_writer(who: Actor, env_name: str) -> None:
+    allowed = {x.strip() for x in os.getenv(env_name, "").split(",") if x.strip()}
+    if who.actor_type != "service" or who.subject not in allowed:
+        raise HTTPException(403, f"writer_not_allowed:{env_name}")
+
+
 def approval_snapshot(record: SkillRecord) -> dict:
     snapshot = record.model_dump(mode="json")
     snapshot["evidence"]["critical_human_approval"] = False
     return snapshot
+
+
+class RegisterSkillRequest(BaseModel):
+    name: str
+    version: str
+    manifest: dict
+
+
+class EvidenceUpdate(BaseModel):
+    review_passed: bool | None = None
+    tests_passed: bool | None = None
+    evals_passed: bool | None = None
+    security_passed: bool | None = None
+    policy_passed: bool | None = None
+    ci_run_id: str | None = None
+    artifacts: list[str] = Field(default_factory=list)
 
 
 class PromotionRequest(BaseModel):
@@ -84,6 +106,27 @@ class BundleRequest(BaseModel):
     signer_key: str = "skills-runtime"
 
 
+@router.post("")
+async def register_skill(request: RegisterSkillRequest, who: Actor = Depends(actor)):
+    require_writer(who, "SKILLS_REGISTRY_WRITERS")
+    manifest = dict(request.manifest)
+    manifest["name"] = request.name
+    manifest["version"] = request.version
+    if manifest.get("self_promotion") is not False or manifest.get("external_writes") is not False:
+        raise HTTPException(400, "unsafe_skill_manifest")
+    record = SkillRecord(
+        identity=SkillIdentity(name=request.name, version=request.version, digest=manifest_digest(manifest)),
+        stage=SkillStage.DRAFT,
+        manifest=manifest,
+    )
+    try:
+        await registry.register(record)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    await evidence.append(skill_name=request.name, version=request.version, event_type="skill_registered", payload={"actor": who.subject, "digest": record.identity.digest})
+    return record
+
+
 @router.get("/{name}/{version}")
 async def get_skill(name: str, version: str, _: Actor = Depends(actor)):
     try:
@@ -92,8 +135,27 @@ async def get_skill(name: str, version: str, _: Actor = Depends(actor)):
         raise HTTPException(404, str(exc)) from exc
 
 
+@router.put("/{name}/{version}/evidence")
+async def update_evidence(name: str, version: str, request: EvidenceUpdate, who: Actor = Depends(actor)):
+    require_writer(who, "SKILLS_EVIDENCE_WRITERS")
+    record = await registry.get(name, version)
+    updates = request.model_dump(exclude_none=True)
+    artifacts = updates.pop("artifacts", [])
+    if updates.get("tests_passed") is True and not (updates.get("ci_run_id") or record.evidence.ci_run_id):
+        raise HTTPException(400, "tests_passed_requires_ci_run_id")
+    for key, value in updates.items():
+        setattr(record.evidence, key, value)
+    for item in artifacts:
+        if item not in record.evidence.artifacts:
+            record.evidence.artifacts.append(item)
+    await registry.register(record)
+    await evidence.append(skill_name=name, version=version, event_type="machine_evidence_updated", payload={"actor": who.subject, "fields": sorted(updates), "artifacts": artifacts})
+    return record
+
+
 @router.post("/{name}/{version}/bundles")
-async def register_bundle(name: str, version: str, request: BundleRequest, _: Actor = Depends(actor)):
+async def register_bundle(name: str, version: str, request: BundleRequest, who: Actor = Depends(actor)):
+    require_writer(who, "SKILLS_BUNDLE_WRITERS")
     try:
         await bundles.register_verified(name=name, version=version, attestation=BundleAttestation(**request.model_dump()))
         return {"registered": True, "bundle_digest": request.bundle_digest}
