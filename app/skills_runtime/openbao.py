@@ -37,24 +37,36 @@ class OpenBaoTransitSigner:
             raise ValueError("digest_must_be_sha256_hex")
         return base64.b64encode(raw).decode()
 
+    async def _post(self, path: str, payload: dict) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(f"{self.address}{path}", headers=self._headers(), json=payload)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise RuntimeError("openbao_unavailable") from exc
+        data = response.json().get("data")
+        if not isinstance(data, dict):
+            raise RuntimeError("openbao_invalid_response")
+        return data
+
     async def sign_digest(self, digest_hex: str, *, key_name: str | None = None) -> str:
         key = key_name or self.key_name
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{self.address}/v1/transit/sign/{key}/sha2-256",
-                headers=self._headers(),
-                json={"input": self._digest_input(digest_hex), "prehashed": True},
-            )
-            response.raise_for_status()
-            return str(response.json()["data"]["signature"])
+        data = await self._post(
+            f"/v1/transit/sign/{key}/sha2-256",
+            {"input": self._digest_input(digest_hex), "prehashed": True},
+        )
+        signature = data.get("signature")
+        if not isinstance(signature, str) or not signature:
+            raise RuntimeError("openbao_signature_missing")
+        return signature
 
     async def verify_digest(self, digest_hex: str, signature: str, *, key_name: str | None = None) -> bool:
         key = key_name or self.key_name
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{self.address}/v1/transit/verify/{key}/sha2-256",
-                headers=self._headers(),
-                json={"input": self._digest_input(digest_hex), "signature": signature, "prehashed": True},
-            )
-            response.raise_for_status()
-            return bool(response.json()["data"]["valid"])
+        data = await self._post(
+            f"/v1/transit/verify/{key}/sha2-256",
+            {"input": self._digest_input(digest_hex), "signature": signature, "prehashed": True},
+        )
+        valid = data.get("valid")
+        if not isinstance(valid, bool):
+            raise RuntimeError("openbao_verification_missing")
+        return valid
