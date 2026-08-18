@@ -4,7 +4,7 @@ import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.skills_runtime.approval import PostgresApprovalService
 from app.skills_runtime.controls import PostgresRuntimeControls
@@ -12,7 +12,7 @@ from app.skills_runtime.database import create_engine_from_env
 from app.skills_runtime.evidence import PostgresEvidenceLedger
 from app.skills_runtime.execution import SkillExecutionAuthorizer
 from app.skills_runtime.lifecycle import SkillLifecycle
-from app.skills_runtime.models import SkillStage
+from app.skills_runtime.models import SkillRecord, SkillStage
 from app.skills_runtime.opa import OpaSkillPolicyClient
 from app.skills_runtime.openbao import OpenBaoTransitSigner
 from app.skills_runtime.registry import PostgresSkillRegistry
@@ -46,12 +46,14 @@ def actor(
     return Actor(subject=x_authenticated_subject, actor_type=x_actor_type)
 
 
+def approval_snapshot(record: SkillRecord) -> dict:
+    snapshot = record.model_dump(mode="json")
+    snapshot["evidence"]["critical_human_approval"] = False
+    return snapshot
+
+
 class PromotionRequest(BaseModel):
     target: SkillStage
-
-
-class ApprovalRequest(BaseModel):
-    evidence: dict = Field(default_factory=dict)
 
 
 class ApprovalDecision(BaseModel):
@@ -88,7 +90,11 @@ async def promote(name: str, version: str, request: PromotionRequest, who: Actor
         if request.target is SkillStage.PRODUCTION:
             if who.actor_type != "human":
                 raise HTTPException(403, "production_promotion_requires_human_actor")
-            record.evidence.critical_human_approval = await approvals.approved_for(skill_name=name, version=version)
+            record.evidence.critical_human_approval = await approvals.approved_for(
+                skill_name=name,
+                version=version,
+                evidence=approval_snapshot(record),
+            )
         promoted = await runtime.promote(record, request.target)
         if promoted.stage is SkillStage.PRODUCTION:
             await controls.set_enabled(name=name, version=version, enabled=True, actor=who.subject, reason="production_promotion")
@@ -98,11 +104,16 @@ async def promote(name: str, version: str, request: PromotionRequest, who: Actor
 
 
 @router.post("/{name}/{version}/approvals")
-async def request_approval(name: str, version: str, request: ApprovalRequest, who: Actor = Depends(actor)):
+async def request_approval(name: str, version: str, who: Actor = Depends(actor)):
     record = await registry.get(name, version)
     if record.stage is not SkillStage.VALIDATED:
         raise HTTPException(409, "approval_only_from_validated")
-    return await approvals.request(skill_name=name, version=version, requested_by=who.subject, evidence=request.evidence)
+    return await approvals.request(
+        skill_name=name,
+        version=version,
+        requested_by=who.subject,
+        evidence=approval_snapshot(record),
+    )
 
 
 @router.post("/approvals/{approval_id}/decision")
@@ -117,11 +128,15 @@ async def decide_approval(approval_id: int, request: ApprovalDecision, who: Acto
 
 @router.put("/{name}/{version}/control")
 async def set_control(name: str, version: str, request: ControlRequest, who: Actor = Depends(actor)):
+    if request.enabled and who.actor_type != "human":
+        raise HTTPException(403, "kill_switch_reenable_requires_human")
     return await controls.set_enabled(name=name, version=version, enabled=request.enabled, actor=who.subject, reason=request.reason)
 
 
 @router.post("/{name}/{version}/revoke")
 async def revoke(name: str, version: str, request: RevokeRequest, who: Actor = Depends(actor)):
+    if who.actor_type != "human":
+        raise HTTPException(403, "revocation_requires_human_actor")
     return await controls.revoke(name=name, version=version, actor=who.subject, reason=request.reason)
 
 
