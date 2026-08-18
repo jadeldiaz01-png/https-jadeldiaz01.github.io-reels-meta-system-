@@ -27,6 +27,13 @@ class PostgresRuntimeControls:
             return RuntimeControl(enabled=False, revoked=False, reason="control_record_missing_fail_closed")
         return RuntimeControl(enabled=bool(row["enabled"]), revoked=bool(row["revoked"]), reason=row["reason"])
 
+    async def _revoke_active_leases(self, conn, *, name: str, version: str) -> None:
+        await conn.execute(text("""
+            UPDATE skill_execution_leases
+            SET status='REVOKED', updated_at=now()
+            WHERE skill_name=:name AND version=:version AND status IN ('AUTHORIZED','RUNNING')
+        """), {"name": name, "version": version})
+
     async def set_enabled(self, *, name: str, version: str, enabled: bool, actor: str, reason: str) -> RuntimeControl:
         if not actor.strip() or not reason.strip():
             raise ValueError("actor_and_reason_required")
@@ -38,6 +45,8 @@ class PostgresRuntimeControls:
                 SET enabled=EXCLUDED.enabled, reason=EXCLUDED.reason, updated_by=EXCLUDED.updated_by, updated_at=now()
                 RETURNING enabled,revoked,reason
             """), {"name": name, "version": version, "enabled": enabled, "reason": reason, "actor": actor})).mappings().one()
+            if not enabled:
+                await self._revoke_active_leases(conn, name=name, version=version)
         return RuntimeControl(bool(row["enabled"]), bool(row["revoked"]), row["reason"])
 
     async def revoke(self, *, name: str, version: str, actor: str, reason: str) -> RuntimeControl:
@@ -51,6 +60,7 @@ class PostgresRuntimeControls:
                 SET enabled=FALSE, revoked=TRUE, reason=EXCLUDED.reason, updated_by=EXCLUDED.updated_by, updated_at=now()
                 RETURNING enabled,revoked,reason
             """), {"name": name, "version": version, "reason": reason, "actor": actor})).mappings().one()
+            await self._revoke_active_leases(conn, name=name, version=version)
         return RuntimeControl(bool(row["enabled"]), bool(row["revoked"]), row["reason"])
 
     async def rollback(self, *, name: str, from_version: str, to_version: str, actor: str, reason: str) -> None:
@@ -74,6 +84,7 @@ class PostgresRuntimeControls:
                 ON CONFLICT (skill_name,version) DO UPDATE
                 SET enabled=FALSE, reason=EXCLUDED.reason, updated_by=EXCLUDED.updated_by, updated_at=now()
             """), {"name": name, "from_version": from_version, "reason": f"rollback_from:{reason}", "actor": actor})
+            await self._revoke_active_leases(conn, name=name, version=from_version)
             await conn.execute(text("""
                 INSERT INTO skill_runtime_controls(skill_name,version,enabled,revoked,reason,updated_by)
                 VALUES (:name,:to_version,TRUE,FALSE,:reason,:actor)
