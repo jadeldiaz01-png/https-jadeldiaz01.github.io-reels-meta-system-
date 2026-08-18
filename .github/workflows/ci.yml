@@ -23,9 +23,11 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgresql+psycopg://engine:ci-only-password@localhost:5432/revenue_engine
+      POSTGRES_PASSWORD: ci-compose-password
+      BAO_DEV_ROOT_TOKEN: ci-compose-openbao-token
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: python -m pip install --upgrade pip
@@ -45,7 +47,10 @@ jobs:
       - name: Rego compile check
         run: docker run --rm -v "$PWD/policies:/policies:ro" openpolicyagent/opa:1.17.0 check /policies/revenue_engine.rego
       - name: OpenBao bootstrap syntax check
-        run: sh -n infra/openbao/bootstrap-sandbox.sh
+        run: |
+          sh -n infra/openbao/bootstrap-sandbox.sh
+          sh -n infra/openbao/bootstrap-skills-runtime.sh
+          sh -n infra/openbao/renew-workload-token.sh
       - name: Validate compose and application image
         run: |
           docker compose config >/dev/null
