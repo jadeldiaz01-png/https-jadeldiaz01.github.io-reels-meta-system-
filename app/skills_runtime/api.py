@@ -159,6 +159,8 @@ async def register_bundle(name: str, version: str, request: BundleRequest, who: 
         return {"registered": True, "bundle_digest": request.bundle_digest}
     except (PermissionError, KeyError) as exc:
         raise HTTPException(403, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 @router.post("/{name}/{version}/promote")
@@ -175,6 +177,8 @@ async def promote(name: str, version: str, request: PromotionRequest, who: Actor
         return promoted
     except (PermissionError, KeyError) as exc:
         raise HTTPException(403, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 @router.post("/{name}/{version}/approvals")
@@ -228,3 +232,5 @@ async def authorize_execution(name: str, version: str, _: Actor = Depends(actor)
         return {"execution_id": str(execution_id), "authorized": True}
     except PermissionError as exc:
         raise HTTPException(403, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
