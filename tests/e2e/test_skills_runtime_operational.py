@@ -15,7 +15,14 @@ DB = os.getenv("E2E_DATABASE_URL", "postgresql://engine:test@127.0.0.1:55432/rev
 API = os.getenv("E2E_SKILLS_RUNTIME_URL", "http://127.0.0.1:18010")
 BAO = os.getenv("E2E_OPENBAO_URL", "http://127.0.0.1:18200")
 BAO_TOKEN = os.getenv("BAO_DEV_ROOT_TOKEN", "")
-HEADERS = {"X-Authenticated-Subject": "e2e-human", "X-Actor-Type": "human"}
+CI = {"X-Authenticated-Subject": "e2e-ci", "X-Actor-Type": "service"}
+REQUESTER = {"X-Authenticated-Subject": "e2e-requester", "X-Actor-Type": "service"}
+APPROVER = {"X-Authenticated-Subject": "e2e-approver", "X-Actor-Type": "human"}
+HUMAN = {"X-Authenticated-Subject": "e2e-human", "X-Actor-Type": "human"}
+
+
+def canonical_digest(value: dict) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
 
 
 def transit_sign(digest_hex: str) -> str:
@@ -26,54 +33,96 @@ def transit_sign(digest_hex: str) -> str:
     return response.json()["data"]["signature"]
 
 
-def seed_production_skill() -> tuple[str, str, str, str]:
-    name, version = "e2e-skill", "1.0.0"
-    bundle_digest = hashlib.sha256(b"immutable-e2e-bundle").hexdigest()
+def call(method: str, path: str, *, headers: dict, json_body: dict | None = None, expected: int = 200) -> httpx.Response:
+    response = httpx.request(method, f"{API}{path}", headers=headers, json=json_body, timeout=15)
+    assert response.status_code == expected, response.text
+    return response
+
+
+def full_pipeline(name: str = "e2e-skill", version: str = "1.0.0") -> tuple[str, str, str, str]:
+    manifest = {"name": name, "version": version, "domain": "e2e", "self_promotion": False, "external_writes": False}
+    call("POST", "/v1/skills", headers=CI, json_body={"name": name, "version": version, "manifest": manifest})
+
+    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"review_passed": True, "artifacts": ["review:e2e"]})
+    call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "REVIEWED"})
+
+    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"tests_passed": True, "ci_run_id": "e2e-ci-run"})
+    call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "TESTED"})
+
+    bundle_digest = hashlib.sha256(f"{name}:{version}:immutable-bundle".encode()).hexdigest()
     signature = transit_sign(bundle_digest)
-    manifest = {"name": name, "version": version, "self_promotion": False, "external_writes": False}
-    evidence = {"review_passed": True, "tests_passed": True, "evals_passed": True, "security_passed": True, "policy_passed": True, "signature_verified": True, "critical_human_approval": True, "ci_run_id": "e2e"}
-    with psycopg.connect(DB) as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO skill_registry(name,version,digest,stage,manifest,evidence,signature,signer_key,revision)
-                VALUES (%s,%s,%s,'PRODUCTION',%s::jsonb,%s::jsonb,%s,'skills-runtime',5)
-                ON CONFLICT (name,version) DO UPDATE SET stage='PRODUCTION', evidence=EXCLUDED.evidence, signature=EXCLUDED.signature, signer_key='skills-runtime'
-            """, (name, version, hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(), json.dumps(manifest), json.dumps(evidence), signature))
-            cur.execute("DELETE FROM skill_bundles WHERE skill_name=%s AND version=%s", (name, version))
-            cur.execute("""
-                INSERT INTO skill_bundles(skill_name,version,bundle_digest,manifest_digest,signature,signer_key)
-                VALUES (%s,%s,%s,%s,%s,'skills-runtime')
-            """, (name, version, bundle_digest, hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(), signature))
-            cur.execute("""
-                INSERT INTO skill_runtime_controls(skill_name,version,enabled,revoked,reason,updated_by)
-                VALUES (%s,%s,TRUE,FALSE,'e2e-seed','e2e')
-                ON CONFLICT (skill_name,version) DO UPDATE SET enabled=TRUE, revoked=FALSE, reason='e2e-seed', updated_by='e2e'
-            """, (name, version))
+    call("POST", f"/v1/skills/{name}/{version}/bundles", headers=CI, json_body={
+        "bundle_digest": bundle_digest,
+        "manifest_digest": canonical_digest(manifest),
+        "signature": signature,
+        "signer_key": "skills-runtime",
+    })
+    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={
+        "evals_passed": True,
+        "security_passed": True,
+        "policy_passed": True,
+        "artifacts": ["eval:e2e", "security:e2e", "policy:e2e"],
+    })
+    call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "VALIDATED"})
+
+    approval = call("POST", f"/v1/skills/{name}/{version}/approvals", headers=REQUESTER).json()
+    call("POST", f"/v1/skills/approvals/{approval['id']}/decision", headers=APPROVER, json_body={"approved": True, "reason": "e2e-production-gate"})
+    call("POST", f"/v1/skills/{name}/{version}/promote", headers=APPROVER, json_body={"target": "PRODUCTION"})
     return name, version, bundle_digest, signature
 
 
-def test_authorize_then_kill_switch_blocks_execution():
-    name, version, _, _ = seed_production_skill()
-    ok = httpx.post(f"{API}/v1/skills/{name}/{version}/authorize-execution", headers=HEADERS, timeout=15)
-    assert ok.status_code == 200, ok.text
-    assert ok.json()["execution_id"]
-    disabled = httpx.put(f"{API}/v1/skills/{name}/{version}/control", headers=HEADERS, json={"enabled": False, "reason": "e2e-kill-switch"}, timeout=5)
-    assert disabled.status_code == 200, disabled.text
-    denied = httpx.post(f"{API}/v1/skills/{name}/{version}/authorize-execution", headers=HEADERS, timeout=5)
+def test_complete_pipeline_reaches_production_and_authorizes_execution():
+    name, version, _, _ = full_pipeline()
+    record = call("GET", f"/v1/skills/{name}/{version}", headers=HUMAN).json()
+    assert record["stage"] == "PRODUCTION"
+    authorized = call("POST", f"/v1/skills/{name}/{version}/authorize-execution", headers=HUMAN).json()
+    assert authorized["authorized"] is True
+    assert authorized["execution_id"]
+
+
+def test_kill_switch_invalidates_active_lease_and_blocks_new_execution():
+    name, version, _, _ = full_pipeline("e2e-kill", "1.0.0")
+    authorized = call("POST", f"/v1/skills/{name}/{version}/authorize-execution", headers=HUMAN).json()
+    execution_id = authorized["execution_id"]
+    call("PUT", f"/v1/skills/{name}/{version}/control", headers=CI, json_body={"enabled": False, "reason": "e2e-kill-switch"})
+    denied = httpx.post(f"{API}/v1/skills/{name}/{version}/authorize-execution", headers=HUMAN, timeout=5)
     assert denied.status_code == 403
     assert "skill_kill_switch_disabled" in denied.text
-    restored = httpx.put(f"{API}/v1/skills/{name}/{version}/control", headers=HEADERS, json={"enabled": True, "reason": "e2e-restore"}, timeout=5)
-    assert restored.status_code == 200
+    with psycopg.connect(DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM skill_execution_leases WHERE execution_id=%s", (execution_id,))
+            assert cur.fetchone()[0] == "REVOKED"
+    call("PUT", f"/v1/skills/{name}/{version}/control", headers=HUMAN, json_body={"enabled": True, "reason": "e2e-human-restore"})
 
 
 def test_tampered_bundle_signature_fails_closed():
-    name, version, original, signature = seed_production_skill()
+    name, version, original, signature = full_pipeline("e2e-tamper", "1.0.0")
     tampered = hashlib.sha256(b"tampered-bundle").hexdigest()
     with psycopg.connect(DB) as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE skill_bundles SET bundle_digest=%s WHERE skill_name=%s AND version=%s", (tampered, name, version))
-    denied = httpx.post(f"{API}/v1/skills/{name}/{version}/authorize-execution", headers=HEADERS, timeout=15)
+    denied = httpx.post(f"{API}/v1/skills/{name}/{version}/authorize-execution", headers=HUMAN, timeout=15)
     assert denied.status_code != 200
     with psycopg.connect(DB) as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE skill_bundles SET bundle_digest=%s, signature=%s WHERE skill_name=%s AND version=%s", (original, signature, name, version))
+
+
+def test_approval_becomes_invalid_if_snapshot_changes():
+    name, version = "e2e-approval-binding", "1.0.0"
+    manifest = {"name": name, "version": version, "domain": "e2e", "self_promotion": False, "external_writes": False}
+    call("POST", "/v1/skills", headers=CI, json_body={"name": name, "version": version, "manifest": manifest})
+    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"review_passed": True})
+    call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "REVIEWED"})
+    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"tests_passed": True, "ci_run_id": "e2e-ci"})
+    call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "TESTED"})
+    digest = hashlib.sha256(b"approval-binding-bundle").hexdigest()
+    call("POST", f"/v1/skills/{name}/{version}/bundles", headers=CI, json_body={"bundle_digest": digest, "manifest_digest": canonical_digest(manifest), "signature": transit_sign(digest), "signer_key": "skills-runtime"})
+    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"evals_passed": True, "security_passed": True, "policy_passed": True})
+    call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "VALIDATED"})
+    approval = call("POST", f"/v1/skills/{name}/{version}/approvals", headers=REQUESTER).json()
+    call("POST", f"/v1/skills/approvals/{approval['id']}/decision", headers=APPROVER, json_body={"approved": True, "reason": "approved-before-change"})
+    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"artifacts": ["late-change"]})
+    denied = httpx.post(f"{API}/v1/skills/{name}/{version}/promote", headers=APPROVER, json={"target": "PRODUCTION"}, timeout=10)
+    assert denied.status_code == 403
+    assert "critical_human_approval_required" in denied.text
