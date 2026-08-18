@@ -1,0 +1,20 @@
+{
+  "agents": [
+    {
+      "name": "master-engineering-orchestrator",
+      "version": "1.0.0",
+      "allowed_skills": ["*"],
+      "allowed_tools": ["research", "validate", "test", "evaluate", "prepare_promotion"],
+      "may_request_production_promotion": true,
+      "may_approve_production": false
+    },
+    {
+      "name": "verified-skill-generator",
+      "version": "1.0.0",
+      "allowed_skills": ["verified-skill-generator", "research-evidence"],
+      "allowed_tools": ["generate_draft", "validate", "test", "evaluate"],
+      "may_request_production_promotion": false,
+      "may_approve_production": false
+    }
+  ]
+}
