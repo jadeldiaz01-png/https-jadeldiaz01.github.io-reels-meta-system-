@@ -1,0 +1,1 @@
+[{"id":"restore-missing","input":{"slo":true,"observability":true,"restore_test":false,"runbook":true,"capacity":true,"reconciliation":true},"expect":{"status":"NO_GO"}},{"id":"complete","input":{"slo":true,"observability":true,"restore_test":true,"runbook":true,"capacity":true,"reconciliation":true},"expect":{"status":"GO_CANDIDATE"}}]
