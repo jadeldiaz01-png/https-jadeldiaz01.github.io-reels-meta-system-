@@ -4,7 +4,7 @@ import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.skills_runtime.approval import PostgresApprovalService
 from app.skills_runtime.controls import PostgresRuntimeControls
@@ -51,7 +51,7 @@ class PromotionRequest(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
-    evidence: dict = {}
+    evidence: dict = Field(default_factory=dict)
 
 
 class ApprovalDecision(BaseModel):
@@ -65,6 +65,11 @@ class ControlRequest(BaseModel):
 
 
 class RevokeRequest(BaseModel):
+    reason: str
+
+
+class RollbackRequest(BaseModel):
+    to_version: str
     reason: str
 
 
@@ -88,7 +93,7 @@ async def promote(name: str, version: str, request: PromotionRequest, who: Actor
         if promoted.stage is SkillStage.PRODUCTION:
             await controls.set_enabled(name=name, version=version, enabled=True, actor=who.subject, reason="production_promotion")
         return promoted
-    except PermissionError as exc:
+    except (PermissionError, KeyError) as exc:
         raise HTTPException(403, str(exc)) from exc
 
 
@@ -104,7 +109,10 @@ async def request_approval(name: str, version: str, request: ApprovalRequest, wh
 async def decide_approval(approval_id: int, request: ApprovalDecision, who: Actor = Depends(actor)):
     if who.actor_type != "human":
         raise HTTPException(403, "human_approver_required")
-    return await approvals.decide(approval_id=approval_id, approved=request.approved, decided_by=who.subject, reason=request.reason)
+    try:
+        return await approvals.decide(approval_id=approval_id, approved=request.approved, decided_by=who.subject, reason=request.reason)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.put("/{name}/{version}/control")
@@ -115,6 +123,18 @@ async def set_control(name: str, version: str, request: ControlRequest, who: Act
 @router.post("/{name}/{version}/revoke")
 async def revoke(name: str, version: str, request: RevokeRequest, who: Actor = Depends(actor)):
     return await controls.revoke(name=name, version=version, actor=who.subject, reason=request.reason)
+
+
+@router.post("/{name}/{version}/rollback")
+async def rollback(name: str, version: str, request: RollbackRequest, who: Actor = Depends(actor)):
+    if who.actor_type != "human":
+        raise HTTPException(403, "rollback_requires_human_actor")
+    try:
+        await controls.rollback(name=name, from_version=version, to_version=request.to_version, actor=who.subject, reason=request.reason)
+        await evidence.append(skill_name=name, version=version, event_type="skill_rollback", payload={"from_version": version, "to_version": request.to_version, "actor": who.subject, "reason": request.reason})
+        return {"rolled_back": True, "from_version": version, "to_version": request.to_version}
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.post("/{name}/{version}/authorize-execution")
