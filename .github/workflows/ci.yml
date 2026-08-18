@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 jobs:
-  p0b:
+  p0c:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -30,23 +30,28 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install --upgrade pip
       - run: pip install -e '.[test]'
-      - name: Apply P0-B schema
+      - name: Apply P0-B and P0-C schemas
         run: |
           python - <<'PY'
           import psycopg
-          sql = open('db/migrations/001_p0b.sql', encoding='utf-8').read()
           with psycopg.connect('postgresql://engine:ci-only-password@localhost:5432/revenue_engine', autocommit=True) as conn:
-              for statement in sql.split(';'):
-                  if statement.strip():
-                      conn.execute(statement)
+              for path in ('db/migrations/001_p0b.sql','db/migrations/002_p0c.sql'):
+                  sql = open(path, encoding='utf-8').read()
+                  for statement in sql.split(';'):
+                      if statement.strip():
+                          conn.execute(statement)
           PY
-      - name: Unit and PostgreSQL integration tests
+      - name: Unit PostgreSQL kill-switch and crash-recovery tests
         run: pytest -q
+      - name: Python compile check
+        run: python -m compileall -q app
       - name: Rego compile check
         run: docker run --rm -v "$PWD/policies:/policies:ro" openpolicyagent/opa:1.17.0 check /policies/revenue_engine.rego
-      - name: OpenBao bootstrap syntax check
-        run: sh -n infra/openbao/bootstrap-sandbox.sh
+      - name: OpenBao policy and bootstrap syntax checks
+        run: |
+          sh -n infra/openbao/bootstrap-sandbox.sh
+          test -s infra/openbao/production-evidence-policy.hcl
       - name: Validate compose and application image
         run: |
           docker compose config >/dev/null
-          docker build -t revenue-engine:p0b .
+          docker build -t revenue-engine:p0c .
