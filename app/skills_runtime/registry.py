@@ -6,7 +6,15 @@ from collections.abc import Iterable
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.skills_runtime.models import SkillRecord
+from app.skills_runtime.models import SkillRecord, SkillStage
+
+_STAGE_ORDER = {
+    SkillStage.DRAFT.value: 0,
+    SkillStage.REVIEWED.value: 1,
+    SkillStage.TESTED.value: 2,
+    SkillStage.VALIDATED.value: 3,
+    SkillStage.PRODUCTION.value: 4,
+}
 
 
 class SkillRegistry:
@@ -20,6 +28,8 @@ class SkillRegistry:
         existing = self._records.get(key)
         if existing and existing.identity.digest != record.identity.digest:
             raise ValueError("immutable_version_digest_conflict")
+        if existing and _STAGE_ORDER[record.stage.value] < _STAGE_ORDER[existing.stage.value]:
+            raise ValueError("stage_regression_forbidden")
         self._records[key] = record
         return record
 
@@ -34,20 +44,24 @@ class SkillRegistry:
 
 
 class PostgresSkillRegistry:
-    """Durable registry enforcing immutable name+version digests."""
+    """Durable registry enforcing immutable name+version digests and monotonic stages."""
 
     def __init__(self, engine: AsyncEngine) -> None:
         self.engine = engine
 
     async def register(self, record: SkillRecord) -> SkillRecord:
         async with self.engine.begin() as conn:
-            existing = await conn.execute(
-                text("SELECT digest FROM skill_registry WHERE name=:name AND version=:version FOR UPDATE"),
+            existing = (await conn.execute(
+                text("SELECT digest, stage, revision FROM skill_registry WHERE name=:name AND version=:version FOR UPDATE"),
                 {"name": record.identity.name, "version": record.identity.version},
-            )
-            digest = existing.scalar_one_or_none()
-            if digest and digest != record.identity.digest:
-                raise ValueError("immutable_version_digest_conflict")
+            )).mappings().one_or_none()
+            if existing:
+                if existing["digest"] != record.identity.digest:
+                    raise ValueError("immutable_version_digest_conflict")
+                if _STAGE_ORDER[record.stage.value] < _STAGE_ORDER[existing["stage"]]:
+                    raise ValueError("stage_regression_forbidden")
+                if record.revision < existing["revision"]:
+                    raise ValueError("revision_regression_forbidden")
 
             await conn.execute(
                 text("""
