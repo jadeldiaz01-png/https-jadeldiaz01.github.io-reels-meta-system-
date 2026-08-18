@@ -52,26 +52,28 @@ class PostgresApprovalService:
         return ApprovalRecord(**row)
 
     async def decide(self, *, approval_id: int, approved: bool, decided_by: str, reason: str) -> ApprovalRecord:
-        if not decided_by.strip():
-            raise ValueError("decided_by_required")
+        if not decided_by.strip() or not reason.strip():
+            raise ValueError("decider_and_reason_required")
         status = "APPROVED" if approved else "REJECTED"
         async with self.engine.begin() as conn:
             row = (await conn.execute(text("""
                 UPDATE skill_approvals
                 SET status=:status, decided_by=:decided_by, reason=:reason, decided_at=:decided_at
-                WHERE id=:id AND status='PENDING'
+                WHERE id=:id AND status='PENDING' AND requested_by <> :decided_by
                 RETURNING id,skill_name,version,requested_stage,status,requested_by,decided_by,reason,request_digest
             """), {"id": approval_id, "status": status, "decided_by": decided_by, "reason": reason, "decided_at": datetime.now(UTC)})).mappings().one_or_none()
         if row is None:
-            raise ValueError("approval_not_pending_or_missing")
+            raise ValueError("approval_missing_not_pending_or_self_approval")
         return ApprovalRecord(**row)
 
-    async def approved_for(self, *, skill_name: str, version: str) -> bool:
+    async def approved_for(self, *, skill_name: str, version: str, evidence: dict[str, Any]) -> bool:
+        digest = approval_digest(skill_name, version, "PRODUCTION", evidence)
         async with self.engine.connect() as conn:
             value = await conn.scalar(text("""
                 SELECT EXISTS(
                     SELECT 1 FROM skill_approvals
-                    WHERE skill_name=:name AND version=:version AND requested_stage='PRODUCTION' AND status='APPROVED'
+                    WHERE skill_name=:name AND version=:version AND requested_stage='PRODUCTION'
+                      AND status='APPROVED' AND request_digest=:digest
                 )
-            """), {"name": skill_name, "version": version})
+            """), {"name": skill_name, "version": version, "digest": digest})
         return bool(value)
