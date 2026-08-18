@@ -52,3 +52,32 @@ class PostgresRuntimeControls:
                 RETURNING enabled,revoked,reason
             """), {"name": name, "version": version, "reason": reason, "actor": actor})).mappings().one()
         return RuntimeControl(bool(row["enabled"]), bool(row["revoked"]), row["reason"])
+
+    async def rollback(self, *, name: str, from_version: str, to_version: str, actor: str, reason: str) -> None:
+        if from_version == to_version:
+            raise ValueError("rollback_versions_must_differ")
+        if not actor.strip() or not reason.strip():
+            raise ValueError("actor_and_reason_required")
+        async with self.engine.begin() as conn:
+            target = (await conn.execute(text("""
+                SELECT r.stage, COALESCE(c.revoked, FALSE) AS revoked
+                FROM skill_registry r
+                LEFT JOIN skill_runtime_controls c ON c.skill_name=r.name AND c.version=r.version
+                WHERE r.name=:name AND r.version=:version
+                FOR UPDATE OF r
+            """), {"name": name, "version": to_version})).mappings().one_or_none()
+            if target is None or target["stage"] != "PRODUCTION" or bool(target["revoked"]):
+                raise ValueError("rollback_target_not_eligible")
+            await conn.execute(text("""
+                INSERT INTO skill_runtime_controls(skill_name,version,enabled,revoked,reason,updated_by)
+                VALUES (:name,:from_version,FALSE,FALSE,:reason,:actor)
+                ON CONFLICT (skill_name,version) DO UPDATE
+                SET enabled=FALSE, reason=EXCLUDED.reason, updated_by=EXCLUDED.updated_by, updated_at=now()
+            """), {"name": name, "from_version": from_version, "reason": f"rollback_from:{reason}", "actor": actor})
+            await conn.execute(text("""
+                INSERT INTO skill_runtime_controls(skill_name,version,enabled,revoked,reason,updated_by)
+                VALUES (:name,:to_version,TRUE,FALSE,:reason,:actor)
+                ON CONFLICT (skill_name,version) DO UPDATE
+                SET enabled=TRUE, reason=EXCLUDED.reason, updated_by=EXCLUDED.updated_by, updated_at=now()
+                WHERE skill_runtime_controls.revoked=FALSE
+            """), {"name": name, "to_version": to_version, "reason": f"rollback_to:{reason}", "actor": actor})
