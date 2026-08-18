@@ -15,15 +15,7 @@ from app.skills_runtime.registry import PostgresSkillRegistry
 class SkillExecutionAuthorizer:
     """Fail-closed authorization gate evaluated immediately before skill execution."""
 
-    def __init__(
-        self,
-        *,
-        engine: AsyncEngine,
-        registry: PostgresSkillRegistry,
-        controls: PostgresRuntimeControls,
-        signer: OpenBaoTransitSigner,
-        policy: OpaSkillPolicyClient,
-    ) -> None:
+    def __init__(self, *, engine: AsyncEngine, registry: PostgresSkillRegistry, controls: PostgresRuntimeControls, signer: OpenBaoTransitSigner, policy: OpaSkillPolicyClient) -> None:
         self.engine = engine
         self.registry = registry
         self.controls = controls
@@ -34,35 +26,29 @@ class SkillExecutionAuthorizer:
         record = await self.registry.get(name, version)
         if record.stage != SkillStage.PRODUCTION:
             raise PermissionError("skill_not_production")
-
         control = await self.controls.get(name, version)
         if not control.enabled:
             raise PermissionError("skill_kill_switch_disabled")
         if control.revoked:
             raise PermissionError("skill_revoked")
-
         async with self.engine.connect() as conn:
             bundle = (await conn.execute(text("""
-                SELECT bundle_digest, signature, signer_key
-                FROM skill_bundles
-                WHERE skill_name=:name AND version=:version
-                ORDER BY created_at DESC LIMIT 1
+                SELECT bundle_digest, signature, signer_key FROM skill_bundles
+                WHERE skill_name=:name AND version=:version ORDER BY created_at DESC LIMIT 1
             """), {"name": name, "version": version})).mappings().one_or_none()
         if bundle is None:
             raise PermissionError("signed_bundle_missing")
         if not await self.signer.verify_digest(bundle["bundle_digest"], bundle["signature"], key_name=bundle["signer_key"]):
             raise PermissionError("bundle_signature_invalid")
-
         decision = await self.policy.evaluate({
             "operation": "EXECUTE",
             "identity": record.identity.model_dump(),
             "stage": record.stage.value,
             "control": {"enabled": control.enabled, "revoked": control.revoked},
             "bundle": {"digest": bundle["bundle_digest"], "signature_verified": True},
-        })
+        }, decision="execution")
         if not bool(decision.get("allow")):
             raise PermissionError("execution_policy_denied")
-
         execution_id = uuid4()
         async with self.engine.begin() as conn:
             await conn.execute(text("""
