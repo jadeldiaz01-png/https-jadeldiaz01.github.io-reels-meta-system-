@@ -1,0 +1,65 @@
+name: skills-runtime-ci
+
+on:
+  pull_request:
+    paths:
+      - "skills/**"
+      - "app/skills_runtime/**"
+      - "policies/skills_promotion*.rego"
+      - "tests/test_skills_runtime.py"
+      - "db/migrations/002_skills_runtime.sql"
+      - "infra/openbao/**"
+      - ".github/workflows/skills-runtime-ci.yml"
+  push:
+    branches: [main, "feat/**"]
+    paths:
+      - "skills/**"
+      - "app/skills_runtime/**"
+      - "policies/skills_promotion*.rego"
+      - "tests/test_skills_runtime.py"
+      - "db/migrations/002_skills_runtime.sql"
+      - "infra/openbao/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install test dependencies
+        run: python -m pip install -e '.[test]'
+      - name: Validate skill contracts
+        run: python skills/_framework/validate_skill.py
+      - name: Run skill eval harness
+        run: python skills/_framework/run_evals.py
+      - name: Run Python tests
+        run: pytest -q
+
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: open-policy-agent/setup-opa@v2.4.0
+        with:
+          version: latest
+      - name: Validate and test promotion policy
+        run: |
+          opa fmt --fail policies/skills_promotion.rego policies/skills_promotion_test.rego
+          opa test policies/skills_promotion.rego policies/skills_promotion_test.rego -v
+
+  production-gate-contract:
+    runs-on: ubuntu-latest
+    needs: [validate, policy]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Assert production remains human-gated
+        run: |
+          grep -q 'critical_human_approval_required' app/skills_runtime/lifecycle.py
+          grep -q 'may_approve_production.*false' config/agent_registry.json
+          grep -q 'critical_human_approval == true' policies/skills_promotion.rego
