@@ -88,6 +88,9 @@ services:
       OPENBAO_ADDR: http://openbao:8200
       OPENBAO_TOKEN_FILE: /run/openbao/token
       TRUSTED_IDENTITY_PROXY: "true"
+      SKILLS_REGISTRY_WRITERS: "verified-skill-generator,master-engineering-orchestrator,e2e-ci"
+      SKILLS_EVIDENCE_WRITERS: "skills-ci,e2e-ci"
+      SKILLS_BUNDLE_WRITERS: "skills-ci,e2e-ci"
       ENVIRONMENT: sandbox
     volumes:
       - openbao-runtime:/run/openbao:ro
