@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "environment": "qualification",
   "generated_for": "P0-C",
   "decision": "LIVE_PILOT_NO_GO",
@@ -7,9 +7,10 @@
   "evidence": {
     "p0b_github_actions_run_id": 32074961837,
     "p0b_conclusion": "success",
-    "p0c_github_actions_run_id": 32076479296,
+    "p0c_github_actions_run_id": 32076585426,
     "p0c_job": "p0c",
-    "p0c_conclusion": "success"
+    "p0c_conclusion": "success",
+    "verified_head_before_manifest_update": "46d5ed4d8c98932bfca84a09c3e16ce5d87f3271"
   },
   "required_gates": {
     "unit_and_integration_tests": "PASS",
@@ -27,6 +28,12 @@
     "chaos_restart_recovery": "PASS_LOST_RESPONSE_PROCESS_RESTART_SANDBOX",
     "signed_evidence_bundle": "OPENBAO_TRANSIT_SIGNER_IMPLEMENTED_NOT_RUN",
     "human_go_live_approval": "NOT_GRANTED"
+  },
+  "operational_blockers": {
+    "github_environment": "REQUIRES_GITHUB_ENVIRONMENT_ADMINISTRATION",
+    "protected_test_secrets": "REQUIRES_META_STRIPE_OPENBAO_TEST_CREDENTIAL_INJECTION",
+    "workflow_dispatch": "REQUIRES_MANUAL_OR_AUTHORIZED_ACTIONS_DISPATCH",
+    "isolated_pitr_runner": "REQUIRES_SELF_HOSTED_RUNNER_LABEL_live-pilot-qualifier"
   },
   "promotion_rule": "The deterministic readiness evaluator requires every mandatory gate to equal PASS and requires external_execution_enabled=false throughout qualification. Missing, unknown, partial or not-run evidence is NO_GO.",
   "safety_invariants": [
