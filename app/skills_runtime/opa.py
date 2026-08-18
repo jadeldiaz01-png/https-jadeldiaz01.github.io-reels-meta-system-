@@ -9,12 +9,14 @@ class OpaSkillPolicyClient:
     def __init__(self, *, url: str | None = None) -> None:
         self.url = (url or os.getenv("OPA_URL", "")).rstrip("/")
 
-    async def evaluate(self, payload: dict) -> dict:
+    async def evaluate(self, payload: dict, *, decision: str = "promotion") -> dict:
         if not self.url:
             raise RuntimeError("opa_unavailable")
+        if decision not in {"promotion", "execution"}:
+            raise ValueError("unsupported_opa_decision")
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(
-                f"{self.url}/v1/data/agia/skills/promotion",
+                f"{self.url}/v1/data/agia/skills/{decision}",
                 json={"input": payload},
             )
             response.raise_for_status()
