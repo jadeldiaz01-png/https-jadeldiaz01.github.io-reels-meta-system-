@@ -1,0 +1,1 @@
+[{"id":"minimal","input":{"goal":"analyze","tools":["research"]},"expect":{"mode":"single_agent"}},{"id":"side-effect","input":{"goal":"publish","tools":["publisher"],"side_effects":true},"expect":{"approvals_required":["external_side_effects"]}}]
