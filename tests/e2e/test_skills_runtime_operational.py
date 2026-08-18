@@ -39,16 +39,13 @@ def call(method: str, path: str, *, headers: dict, json_body: dict | None = None
     return response
 
 
-def full_pipeline(name: str = "e2e-skill", version: str = "1.0.0") -> tuple[str, str, str, str]:
+def pipeline_to_validated(name: str, version: str = "1.0.0") -> tuple[str, str, str, str, dict]:
     manifest = {"name": name, "version": version, "domain": "e2e", "self_promotion": False, "external_writes": False}
     call("POST", "/v1/skills", headers=CI, json_body={"name": name, "version": version, "manifest": manifest})
-
     call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"review_passed": True, "artifacts": ["review:e2e"]})
     call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "REVIEWED"})
-
     call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"tests_passed": True, "ci_run_id": "e2e-ci-run"})
     call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "TESTED"})
-
     bundle_digest = hashlib.sha256(f"{name}:{version}:immutable-bundle".encode()).hexdigest()
     signature = transit_sign(bundle_digest)
     call("POST", f"/v1/skills/{name}/{version}/bundles", headers=CI, json_body={
@@ -64,7 +61,11 @@ def full_pipeline(name: str = "e2e-skill", version: str = "1.0.0") -> tuple[str,
         "artifacts": ["eval:e2e", "security:e2e", "policy:e2e"],
     })
     call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "VALIDATED"})
+    return name, version, bundle_digest, signature, manifest
 
+
+def full_pipeline(name: str = "e2e-skill", version: str = "1.0.0") -> tuple[str, str, str, str]:
+    name, version, bundle_digest, signature, _ = pipeline_to_validated(name, version)
     approval = call("POST", f"/v1/skills/{name}/{version}/approvals", headers=REQUESTER).json()
     call("POST", f"/v1/skills/approvals/{approval['id']}/decision", headers=APPROVER, json_body={"approved": True, "reason": "e2e-production-gate"})
     call("POST", f"/v1/skills/{name}/{version}/promote", headers=APPROVER, json_body={"target": "PRODUCTION"})
@@ -81,9 +82,8 @@ def test_complete_pipeline_reaches_production_and_authorizes_execution():
 
 
 def test_kill_switch_invalidates_active_lease_and_blocks_new_execution():
-    name, version, _, _ = full_pipeline("e2e-kill", "1.0.0")
-    authorized = call("POST", f"/v1/skills/{name}/{version}/authorize-execution", headers=HUMAN).json()
-    execution_id = authorized["execution_id"]
+    name, version, _, _ = full_pipeline("e2e-kill")
+    execution_id = call("POST", f"/v1/skills/{name}/{version}/authorize-execution", headers=HUMAN).json()["execution_id"]
     call("PUT", f"/v1/skills/{name}/{version}/control", headers=CI, json_body={"enabled": False, "reason": "e2e-kill-switch"})
     denied = httpx.post(f"{API}/v1/skills/{name}/{version}/authorize-execution", headers=HUMAN, timeout=5)
     assert denied.status_code == 403
@@ -96,7 +96,7 @@ def test_kill_switch_invalidates_active_lease_and_blocks_new_execution():
 
 
 def test_tampered_bundle_signature_fails_closed():
-    name, version, original, signature = full_pipeline("e2e-tamper", "1.0.0")
+    name, version, original, signature = full_pipeline("e2e-tamper")
     tampered = hashlib.sha256(b"tampered-bundle").hexdigest()
     with psycopg.connect(DB) as conn:
         with conn.cursor() as cur:
@@ -108,21 +108,25 @@ def test_tampered_bundle_signature_fails_closed():
             cur.execute("UPDATE skill_bundles SET bundle_digest=%s, signature=%s WHERE skill_name=%s AND version=%s", (original, signature, name, version))
 
 
-def test_approval_becomes_invalid_if_snapshot_changes():
-    name, version = "e2e-approval-binding", "1.0.0"
-    manifest = {"name": name, "version": version, "domain": "e2e", "self_promotion": False, "external_writes": False}
-    call("POST", "/v1/skills", headers=CI, json_body={"name": name, "version": version, "manifest": manifest})
-    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"review_passed": True})
-    call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "REVIEWED"})
-    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"tests_passed": True, "ci_run_id": "e2e-ci"})
-    call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "TESTED"})
-    digest = hashlib.sha256(b"approval-binding-bundle").hexdigest()
-    call("POST", f"/v1/skills/{name}/{version}/bundles", headers=CI, json_body={"bundle_digest": digest, "manifest_digest": canonical_digest(manifest), "signature": transit_sign(digest), "signer_key": "skills-runtime"})
-    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"evals_passed": True, "security_passed": True, "policy_passed": True})
-    call("POST", f"/v1/skills/{name}/{version}/promote", headers=CI, json_body={"target": "VALIDATED"})
-    approval = call("POST", f"/v1/skills/{name}/{version}/approvals", headers=REQUESTER).json()
-    call("POST", f"/v1/skills/approvals/{approval['id']}/decision", headers=APPROVER, json_body={"approved": True, "reason": "approved-before-change"})
-    call("PUT", f"/v1/skills/{name}/{version}/evidence", headers=CI, json_body={"artifacts": ["late-change"]})
-    denied = httpx.post(f"{API}/v1/skills/{name}/{version}/promote", headers=APPROVER, json={"target": "PRODUCTION"}, timeout=10)
-    assert denied.status_code == 403
-    assert "critical_human_approval_required" in denied.text
+def test_validated_evidence_and_bundle_are_frozen():
+    name, version, _, _, manifest = pipeline_to_validated("e2e-frozen")
+    evidence_change = httpx.put(f"{API}/v1/skills/{name}/{version}/evidence", headers=CI, json={"artifacts": ["late-change"]}, timeout=5)
+    assert evidence_change.status_code == 409
+    assert "evidence_locked_after_validation" in evidence_change.text
+    digest = hashlib.sha256(b"replacement-bundle").hexdigest()
+    bundle_change = httpx.post(f"{API}/v1/skills/{name}/{version}/bundles", headers=CI, json={
+        "bundle_digest": digest,
+        "manifest_digest": canonical_digest(manifest),
+        "signature": transit_sign(digest),
+        "signer_key": "skills-runtime",
+    }, timeout=10)
+    assert bundle_change.status_code == 403
+    assert "bundle_locked_after_validation" in bundle_change.text
+
+
+def test_self_approval_is_rejected():
+    name, version, _, _, _ = pipeline_to_validated("e2e-self-approval")
+    requester_human = {"X-Authenticated-Subject": "same-human", "X-Actor-Type": "human"}
+    approval = call("POST", f"/v1/skills/{name}/{version}/approvals", headers=requester_human).json()
+    denied = httpx.post(f"{API}/v1/skills/approvals/{approval['id']}/decision", headers=requester_human, json={"approved": True, "reason": "self"}, timeout=5)
+    assert denied.status_code == 409
