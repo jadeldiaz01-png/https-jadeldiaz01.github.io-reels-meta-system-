@@ -1,0 +1,9 @@
+services:
+  postgres:
+    ports: ["55432:5432"]
+  opa:
+    ports: ["18181:8181"]
+  openbao:
+    ports: ["18200:8200"]
+  skills-runtime:
+    ports: ["18010:8010"]
