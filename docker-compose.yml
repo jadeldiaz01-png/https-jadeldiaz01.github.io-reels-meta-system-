@@ -100,7 +100,6 @@ services:
         condition: service_completed_successfully
       openbao-renewer:
         condition: service_started
-    ports: ["8010:8010"]
 
 volumes:
   pgdata:
