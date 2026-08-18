@@ -4,14 +4,17 @@ from collections.abc import Awaitable, Callable
 
 from app.models import ExternalActionIntent, IntentState
 from app.policy import PolicyEngine
+from app.skills_runtime.models import SkillRecord, SkillStage
+from app.skills_runtime.service import SkillRuntimeService
 
 Executor = Callable[[ExternalActionIntent], Awaitable[str]]
 Reconciler = Callable[[ExternalActionIntent], Awaitable[str | None]]
 
 
 class Orchestrator:
-    def __init__(self, policy: PolicyEngine) -> None:
+    def __init__(self, policy: PolicyEngine, *, skill_runtime: SkillRuntimeService | None = None) -> None:
         self.policy = policy
+        self.skill_runtime = skill_runtime
 
     async def execute(self, intent: ExternalActionIntent, executor: Executor) -> ExternalActionIntent:
         decision = self.policy.evaluate(intent)
@@ -54,3 +57,8 @@ class Orchestrator:
         else:
             intent.state = IntentState.UNKNOWN
         return intent
+
+    async def promote_skill(self, record: SkillRecord, target: SkillStage) -> SkillRecord:
+        if self.skill_runtime is None:
+            raise RuntimeError("skills_runtime_not_configured")
+        return await self.skill_runtime.promote(record, target)
