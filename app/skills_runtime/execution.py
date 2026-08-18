@@ -13,7 +13,7 @@ from app.skills_runtime.registry import PostgresSkillRegistry
 
 
 class SkillExecutionAuthorizer:
-    """Fail-closed authorization gate evaluated immediately before skill execution."""
+    """Fail-closed authorization and lease guard evaluated before every external side effect."""
 
     def __init__(self, *, engine: AsyncEngine, registry: PostgresSkillRegistry, controls: PostgresRuntimeControls, signer: OpenBaoTransitSigner, policy: OpaSkillPolicyClient) -> None:
         self.engine = engine
@@ -56,3 +56,33 @@ class SkillExecutionAuthorizer:
                 VALUES (:id,:name,:version,:digest,'AUTHORIZED')
             """), {"id": execution_id, "name": name, "version": version, "digest": bundle["bundle_digest"]})
         return execution_id
+
+    async def assert_active(self, execution_id: UUID) -> None:
+        async with self.engine.connect() as conn:
+            row = (await conn.execute(text("""
+                SELECT skill_name, version, status FROM skill_execution_leases WHERE execution_id=:id
+            """), {"id": execution_id})).mappings().one_or_none()
+        if row is None or row["status"] not in {"AUTHORIZED", "RUNNING"}:
+            raise PermissionError("execution_lease_not_active")
+        control = await self.controls.get(row["skill_name"], row["version"])
+        if not control.enabled or control.revoked:
+            raise PermissionError("execution_revoked_by_runtime_control")
+
+    async def mark_running(self, execution_id: UUID) -> None:
+        await self.assert_active(execution_id)
+        async with self.engine.begin() as conn:
+            result = await conn.execute(text("""
+                UPDATE skill_execution_leases SET status='RUNNING', updated_at=now()
+                WHERE execution_id=:id AND status='AUTHORIZED'
+            """), {"id": execution_id})
+            if result.rowcount != 1:
+                raise PermissionError("execution_lease_transition_denied")
+
+    async def complete(self, execution_id: UUID, *, succeeded: bool) -> None:
+        async with self.engine.begin() as conn:
+            result = await conn.execute(text("""
+                UPDATE skill_execution_leases SET status=:status, updated_at=now()
+                WHERE execution_id=:id AND status IN ('AUTHORIZED','RUNNING')
+            """), {"id": execution_id, "status": "SUCCEEDED" if succeeded else "FAILED"})
+            if result.rowcount != 1:
+                raise PermissionError("execution_lease_not_completable")
