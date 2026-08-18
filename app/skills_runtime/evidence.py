@@ -21,11 +21,14 @@ class PostgresEvidenceLedger:
 
     async def append(self, *, skill_name: str, version: str, event_type: str, payload: dict[str, Any]) -> str:
         async with self.engine.begin() as conn:
+            # Serialize ledger writers so concurrent events cannot fork the hash chain.
+            await conn.execute(text("SELECT pg_advisory_xact_lock(827451991)"))
             previous = await conn.execute(
-                text("SELECT entry_hash FROM skill_evidence_ledger ORDER BY id DESC LIMIT 1 FOR SHARE")
+                text("SELECT entry_hash FROM skill_evidence_ledger ORDER BY id DESC LIMIT 1")
             )
             prev_hash = previous.scalar_one_or_none() or "GENESIS"
-            occurred_at = datetime.now(UTC).isoformat()
+            occurred_at_dt = datetime.now(UTC)
+            occurred_at = occurred_at_dt.isoformat()
             material = canonical_json({
                 "skill_name": skill_name,
                 "version": version,
@@ -48,7 +51,7 @@ class PostgresEvidenceLedger:
                     "payload": canonical_json(payload),
                     "previous_hash": prev_hash,
                     "entry_hash": entry_hash,
-                    "occurred_at": occurred_at,
+                    "occurred_at": occurred_at_dt,
                 },
             )
             return entry_hash
