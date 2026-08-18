@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from app.skills_runtime.approval import PostgresApprovalService
+from app.skills_runtime.bundle_store import BundleAttestation, PostgresBundleStore
 from app.skills_runtime.controls import PostgresRuntimeControls
 from app.skills_runtime.database import create_engine_from_env
 from app.skills_runtime.evidence import PostgresEvidenceLedger
@@ -28,6 +29,7 @@ signer = OpenBaoTransitSigner()
 evidence = PostgresEvidenceLedger(engine)
 runtime = SkillRuntimeService(registry=registry, lifecycle=SkillLifecycle(), policy=policy, evidence=evidence)
 authorizer = SkillExecutionAuthorizer(engine=engine, registry=registry, controls=controls, signer=signer, policy=policy)
+bundles = PostgresBundleStore(engine=engine, registry=registry, signer=signer, evidence=evidence)
 
 
 class Actor(BaseModel):
@@ -75,12 +77,28 @@ class RollbackRequest(BaseModel):
     reason: str
 
 
+class BundleRequest(BaseModel):
+    bundle_digest: str
+    manifest_digest: str
+    signature: str
+    signer_key: str = "skills-runtime"
+
+
 @router.get("/{name}/{version}")
 async def get_skill(name: str, version: str, _: Actor = Depends(actor)):
     try:
         return await registry.get(name, version)
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/{name}/{version}/bundles")
+async def register_bundle(name: str, version: str, request: BundleRequest, _: Actor = Depends(actor)):
+    try:
+        await bundles.register_verified(name=name, version=version, attestation=BundleAttestation(**request.model_dump()))
+        return {"registered": True, "bundle_digest": request.bundle_digest}
+    except (PermissionError, KeyError) as exc:
+        raise HTTPException(403, str(exc)) from exc
 
 
 @router.post("/{name}/{version}/promote")
@@ -90,11 +108,7 @@ async def promote(name: str, version: str, request: PromotionRequest, who: Actor
         if request.target is SkillStage.PRODUCTION:
             if who.actor_type != "human":
                 raise HTTPException(403, "production_promotion_requires_human_actor")
-            record.evidence.critical_human_approval = await approvals.approved_for(
-                skill_name=name,
-                version=version,
-                evidence=approval_snapshot(record),
-            )
+            record.evidence.critical_human_approval = await approvals.approved_for(skill_name=name, version=version, evidence=approval_snapshot(record))
         promoted = await runtime.promote(record, request.target)
         if promoted.stage is SkillStage.PRODUCTION:
             await controls.set_enabled(name=name, version=version, enabled=True, actor=who.subject, reason="production_promotion")
@@ -108,12 +122,7 @@ async def request_approval(name: str, version: str, who: Actor = Depends(actor))
     record = await registry.get(name, version)
     if record.stage is not SkillStage.VALIDATED:
         raise HTTPException(409, "approval_only_from_validated")
-    return await approvals.request(
-        skill_name=name,
-        version=version,
-        requested_by=who.subject,
-        evidence=approval_snapshot(record),
-    )
+    return await approvals.request(skill_name=name, version=version, requested_by=who.subject, evidence=approval_snapshot(record))
 
 
 @router.post("/approvals/{approval_id}/decision")
