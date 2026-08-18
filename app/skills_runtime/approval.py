@@ -40,13 +40,15 @@ class PostgresApprovalService:
         self.engine = engine
 
     async def request(self, *, skill_name: str, version: str, requested_by: str, evidence: dict[str, Any]) -> ApprovalRecord:
+        if not requested_by.strip():
+            raise ValueError("requested_by_required")
         digest = approval_digest(skill_name, version, "PRODUCTION", evidence)
         async with self.engine.begin() as conn:
             row = (await conn.execute(text("""
                 INSERT INTO skill_approvals(skill_name,version,requested_stage,status,requested_by,request_digest)
                 VALUES (:name,:version,'PRODUCTION','PENDING',:requested_by,:digest)
                 ON CONFLICT (skill_name,version,requested_stage,request_digest)
-                DO UPDATE SET requested_by = EXCLUDED.requested_by
+                DO UPDATE SET request_digest = skill_approvals.request_digest
                 RETURNING id,skill_name,version,requested_stage,status,requested_by,decided_by,reason,request_digest
             """), {"name": skill_name, "version": version, "requested_by": requested_by, "digest": digest})).mappings().one()
         return ApprovalRecord(**row)
