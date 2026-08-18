@@ -1,0 +1,1 @@
+[{"id":"missing-sbom","input":{"tests":true,"dependency_scan":true,"secret_scan":true,"sbom":false,"provenance":true,"signature":true},"expect":{"status":"NO_GO"}},{"id":"complete","input":{"tests":true,"dependency_scan":true,"secret_scan":true,"sbom":true,"provenance":true,"signature":true},"expect":{"status":"READY_FOR_RELEASE_APPROVAL"}}]
