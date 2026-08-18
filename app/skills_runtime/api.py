@@ -114,11 +114,7 @@ async def register_skill(request: RegisterSkillRequest, who: Actor = Depends(act
     manifest["version"] = request.version
     if manifest.get("self_promotion") is not False or manifest.get("external_writes") is not False:
         raise HTTPException(400, "unsafe_skill_manifest")
-    record = SkillRecord(
-        identity=SkillIdentity(name=request.name, version=request.version, digest=manifest_digest(manifest)),
-        stage=SkillStage.DRAFT,
-        manifest=manifest,
-    )
+    record = SkillRecord(identity=SkillIdentity(name=request.name, version=request.version, digest=manifest_digest(manifest)), stage=SkillStage.DRAFT, manifest=manifest)
     try:
         await registry.register(record)
     except ValueError as exc:
@@ -139,6 +135,8 @@ async def get_skill(name: str, version: str, _: Actor = Depends(actor)):
 async def update_evidence(name: str, version: str, request: EvidenceUpdate, who: Actor = Depends(actor)):
     require_writer(who, "SKILLS_EVIDENCE_WRITERS")
     record = await registry.get(name, version)
+    if record.stage in {SkillStage.VALIDATED, SkillStage.PRODUCTION}:
+        raise HTTPException(409, "evidence_locked_after_validation")
     updates = request.model_dump(exclude_none=True)
     artifacts = updates.pop("artifacts", [])
     if updates.get("tests_passed") is True and not (updates.get("ci_run_id") or record.evidence.ci_run_id):
