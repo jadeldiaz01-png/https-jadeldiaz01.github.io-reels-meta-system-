@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import io
 import json
@@ -27,17 +28,19 @@ def _canonical_manifest(manifest: dict) -> bytes:
 def build_deterministic_bundle(skill_dir: Path) -> bytes:
     if not skill_dir.is_dir():
         raise ValueError("skill_dir_missing")
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=9) as tf:
-        for path in sorted(p for p in skill_dir.rglob("*") if p.is_file()):
-            rel = path.relative_to(skill_dir).as_posix()
-            info = tf.gettarinfo(str(path), arcname=rel)
-            info.uid = info.gid = 0
-            info.uname = info.gname = ""
-            info.mtime = 0
-            with path.open("rb") as f:
-                tf.addfile(info, f)
-    return buf.getvalue()
+    compressed = io.BytesIO()
+    with gzip.GzipFile(fileobj=compressed, mode="wb", compresslevel=9, mtime=0, filename="") as gz:
+        with tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tf:
+            for path in sorted(p for p in skill_dir.rglob("*") if p.is_file()):
+                rel = path.relative_to(skill_dir).as_posix()
+                info = tf.gettarinfo(str(path), arcname=rel)
+                info.uid = info.gid = 0
+                info.uname = info.gname = ""
+                info.mtime = 0
+                info.pax_headers = {}
+                with path.open("rb") as f:
+                    tf.addfile(info, f)
+    return compressed.getvalue()
 
 
 async def sign_bundle(*, skill_dir: Path, signer: OpenBaoTransitSigner, key_name: str) -> SignedBundle:
