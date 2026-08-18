@@ -5,18 +5,21 @@ from typing import Protocol
 from app.skills_runtime.lifecycle import SkillLifecycle
 from app.skills_runtime.models import SkillRecord, SkillStage
 from app.skills_runtime.opa import OpaSkillPolicyClient
-from app.skills_runtime.registry import SkillRegistry
 
 
 class EvidenceSink(Protocol):
     async def append(self, *, skill_name: str, version: str, event_type: str, payload: dict) -> str: ...
 
 
+class RegistrySink(Protocol):
+    async def register(self, record: SkillRecord) -> SkillRecord: ...
+
+
 class SkillRuntimeService:
     def __init__(
         self,
         *,
-        registry: SkillRegistry,
+        registry: RegistrySink,
         lifecycle: SkillLifecycle,
         policy: OpaSkillPolicyClient,
         evidence: EvidenceSink,
@@ -55,7 +58,7 @@ class SkillRuntimeService:
             raise PermissionError("opa_policy_denied")
 
         promoted = self.lifecycle.promote(record, target)
-        self.registry.register(promoted)
+        await self.registry.register(promoted)
         await self.evidence.append(
             skill_name=promoted.identity.name,
             version=promoted.identity.version,
