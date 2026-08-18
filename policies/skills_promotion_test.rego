@@ -19,24 +19,24 @@ base := {
 }
 
 test_validated_allowed if {
-  input := object.union(base, {"from": "TESTED", "to": "VALIDATED"})
-  promotion.allow with input as input
+  candidate_input := object.union(base, {"from": "TESTED", "to": "VALIDATED"})
+  promotion.allow with input as candidate_input
 }
 
 test_production_denied_without_human if {
-  input := object.union(base, {"from": "VALIDATED", "to": "PRODUCTION"})
-  not promotion.allow with input as input
-  promotion.requires_human_approval with input as input
+  candidate_input := object.union(base, {"from": "VALIDATED", "to": "PRODUCTION"})
+  not promotion.allow with input as candidate_input
+  promotion.requires_human_approval with input as candidate_input
 }
 
 test_production_allowed_with_human if {
   evidence := object.union(base.evidence, {"critical_human_approval": true})
   candidate := object.union(base, {"evidence": evidence})
-  input := object.union(candidate, {"from": "VALIDATED", "to": "PRODUCTION"})
-  promotion.allow with input as input
+  candidate_input := object.union(candidate, {"from": "VALIDATED", "to": "PRODUCTION"})
+  promotion.allow with input as candidate_input
 }
 
 test_non_sequential_denied if {
-  input := object.union(base, {"from": "DRAFT", "to": "VALIDATED"})
-  not promotion.allow with input as input
+  candidate_input := object.union(base, {"from": "DRAFT", "to": "VALIDATED"})
+  not promotion.allow with input as candidate_input
 }
