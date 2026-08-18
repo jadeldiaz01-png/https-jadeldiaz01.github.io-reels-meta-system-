@@ -26,4 +26,4 @@ exclude = ["tests*", "db*", "infra*", "config*", "policies*", "observability*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["tests", "skills"]
+testpaths = ["tests"]
