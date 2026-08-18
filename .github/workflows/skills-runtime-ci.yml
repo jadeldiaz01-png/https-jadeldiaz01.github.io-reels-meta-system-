@@ -61,7 +61,7 @@ jobs:
           version: latest
       - name: Validate and test skill policies
         run: |
-          opa fmt --fail policies/skills_promotion.rego policies/skills_promotion_test.rego policies/skills_execution.rego policies/skills_execution_test.rego
+          opa check --strict policies/skills_promotion.rego policies/skills_promotion_test.rego policies/skills_execution.rego policies/skills_execution_test.rego
           opa test policies/skills_promotion.rego policies/skills_promotion_test.rego policies/skills_execution.rego policies/skills_execution_test.rego -v
 
   operational-e2e:
@@ -121,3 +121,6 @@ jobs:
           grep -q 'signature_verified == true' policies/skills_execution.rego
           grep -q 'OPENBAO_TOKEN_FILE' docker-compose.yml
           ! grep -q 'OPENBAO_TOKEN:' docker-compose.yml
+          grep -q 'transit/verify/skills-runtime' infra/openbao/skills-runtime-policy.hcl
+          ! grep -q 'transit/sign/skills-runtime' infra/openbao/skills-runtime-policy.hcl
+          grep -q 'transit/sign/skills-runtime' infra/openbao/skills-bundle-signer-policy.hcl
