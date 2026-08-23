@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile contracts and gates
-        run: python -m py_compile cineforge/__init__.py cineforge/contracts.py cineforge/quality_gates.py cineforge/image_quality.py cineforge/creative_patterns.py cineforge/render_runtime.py
+        run: python -m py_compile cineforge/__init__.py cineforge/contracts.py cineforge/quality_gates.py cineforge/image_quality.py cineforge/creative_patterns.py cineforge/render_runtime.py cineforge/free_providers.py
       - name: Validate fail-closed policy and reference libraries
         run: |
           python - <<'PY'
@@ -58,4 +58,4 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python -m pip install --disable-pip-version-check pytest
-          pytest -q tests/test_cineforge_quality_gates.py tests/test_cineforge_image_quality.py tests/test_cineforge_creative_patterns.py tests/test_cineforge_render_runtime.py
+          pytest -q tests/test_cineforge_quality_gates.py tests/test_cineforge_image_quality.py tests/test_cineforge_creative_patterns.py tests/test_cineforge_render_runtime.py tests/test_cineforge_free_providers.py
