@@ -1,0 +1,83 @@
+{
+  "version": "1.2.0",
+  "default_decision": "BLOCKED",
+  "research": {
+    "allowlisted_sources_only": true,
+    "official_apis_preferred": true,
+    "respect_terms_and_robots": true,
+    "anti_bot_bypass": false,
+    "cloudflare_stealth_bypass": false,
+    "credential_harvesting": false
+  },
+  "generation": {
+    "require_original_concept": true,
+    "require_rights_or_permission_for_references": true,
+    "reference_video_is_quality_reference_only": true,
+    "reference_library_is_abstract_pattern_reference_only": true,
+    "copy_reference_watermark_or_identity": false,
+    "copy_exact_reference_composition": false,
+    "copy_exact_reference_action_sequence": false,
+    "copy_reference_audio_or_dialogue": false,
+    "require_visual_bible": true,
+    "require_shot_contract": true,
+    "require_creative_pattern_profile": true,
+    "require_continuity_gate_before_render": true,
+    "provider_fallback_allowed": true,
+    "fallback_must_preserve_quality_floor": true,
+    "silent_quality_downgrade": false,
+    "quality_first_model_routing": true
+  },
+  "publication": {
+    "human_approval_required": true,
+    "autonomous_external_publish": false,
+    "spam_or_engagement_manipulation": false,
+    "impersonation": false,
+    "generated_master_must_not_contain_third_party_watermark": true
+  },
+  "quality": {
+    "minimum_width": 1080,
+    "minimum_height": 1920,
+    "preferred_aspect_ratio": "9:16",
+    "target_fps": 30,
+    "delivery_color_space": "bt709",
+    "minimum_audio_sample_rate_hz": 48000,
+    "required_video_codec": "h264",
+    "required_audio_codec": "aac",
+    "require_faststart": true,
+    "reference_signature": {
+      "preserve_natural_motion": true,
+      "preserve_layered_depth": true,
+      "preserve_subject_background_separation": true,
+      "preserve_highlight_rolloff": true,
+      "preserve_shadow_detail": true,
+      "preserve_specular_reflections_when_present": true,
+      "preserve_stable_horizon_when_scene_requires": true,
+      "prefer_visual_storytelling_without_text": true,
+      "preserve_setup_before_payoff": true,
+      "hold_reaction_or_consequence_after_payoff": true,
+      "prefer_single_clear_event_over_multiple_weak_events": true,
+      "camera_motion_requires_narrative_motivation": true,
+      "preserve_environment_context_when_geography_matters": true,
+      "shallow_depth_of_field_is_not_mandatory": true
+    },
+    "reject_on_critical_visual_defect": true,
+    "reject_on_continuity_failure": true,
+    "reject_on_policy_failure": true
+  },
+  "finops": {
+    "estimate_cost_before_render": true,
+    "require_budget_check": true,
+    "record_actual_cost": true,
+    "prefer_quality_per_dollar_routing": true,
+    "cost_must_not_override_quality_floor": true
+  },
+  "provenance": {
+    "record_model_and_provider": true,
+    "record_prompt_hash": true,
+    "record_reference_asset_ids": true,
+    "record_reference_profile_id": true,
+    "record_creative_pattern_family": true,
+    "record_output_sha256": true,
+    "record_qc_result": true
+  }
+}
