@@ -22,7 +22,7 @@ on:
     paths:
       - ".cineforge/deploy-hf-zerogpu.trigger"
   issues:
-    types: [opened]
+    types: [opened, edited]
 
 permissions:
   contents: read
