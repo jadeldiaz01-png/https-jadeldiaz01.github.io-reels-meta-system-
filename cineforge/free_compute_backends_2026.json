@@ -1,0 +1,65 @@
+{
+  "as_of": "2026-08-23",
+  "policy": {
+    "runtime_detection_required": true,
+    "no_assumed_gpu_model": true,
+    "no_sla_assumed_for_free_tiers": true,
+    "persistent_worker_preferred": true,
+    "shared_or_session_backends_are_experimental": true,
+    "minimum_supported_vram_gb": 6,
+    "provider_enable_requires_smoke_qc": true
+  },
+  "backends": [
+    {
+      "name": "local_or_vps_nvidia",
+      "class": "PERSISTENT",
+      "cost": "hardware/infrastructure owned or already paid; no per-render API fee",
+      "gpu": "detected at runtime with nvidia-smi",
+      "automation": "full",
+      "priority": 1,
+      "status": "preferred"
+    },
+    {
+      "name": "huggingface_zerogpu",
+      "class": "SHARED_API",
+      "cost": "free quota available subject to account and daily limits",
+      "gpu": "48GB large / 96GB xlarge shared allocation per current official docs",
+      "automation": "Gradio/Space API compatible",
+      "constraints": ["quota limited", "queueing", "Gradio only", "runtime duration limits", "not persistent"],
+      "priority": 2,
+      "status": "experimental_candidate"
+    },
+    {
+      "name": "google_colab_free",
+      "class": "SESSION_ONLY",
+      "cost": "free access subject to availability",
+      "gpu": "type and availability are variable; must detect at runtime",
+      "automation": "manual/session-oriented",
+      "constraints": ["no guaranteed GPU", "ephemeral runtime", "disconnects", "no production SLA"],
+      "priority": 3,
+      "status": "manual_smoke_candidate"
+    },
+    {
+      "name": "kaggle_notebooks_free_gpu",
+      "class": "SESSION_ONLY",
+      "cost": "free quota subject to account and demand",
+      "gpu": "availability/quota varies; detect inside notebook",
+      "automation": "not treated as persistent CineForge worker",
+      "constraints": ["quota limited", "ephemeral session", "no production SLA"],
+      "priority": 4,
+      "status": "manual_smoke_candidate"
+    }
+  ],
+  "routing": {
+    "vram_6_to_11_gb": "framepack",
+    "vram_12_to_23_gb": "cogvideox-2b",
+    "vram_24_plus_gb": "wan2.2-ti2v-5b",
+    "below_6_gb": "BLOCKED"
+  },
+  "observed_current_session": {
+    "cuda_available": false,
+    "device_count": 0,
+    "torch_build": "2.10.0+cpu",
+    "decision": "NO_LOCAL_GPU"
+  }
+}
