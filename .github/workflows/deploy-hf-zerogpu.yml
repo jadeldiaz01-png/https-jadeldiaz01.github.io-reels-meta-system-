@@ -8,8 +8,9 @@ on:
         required: true
         default: "Makubezxjadel/cineforge-zerogpu"
       model_revision:
-        description: "Immutable Wan2.2 model revision/commit SHA"
+        description: "Immutable Wan2.2 commit SHA, or AUTO to resolve and pin current SHA"
         required: true
+        default: "AUTO"
       private:
         description: "Create Space private"
         required: true
@@ -49,13 +50,18 @@ jobs:
 
           token = os.environ["HF_TOKEN"]
           space_id = os.environ["SPACE_ID"]
-          revision = os.environ["MODEL_REVISION"].strip()
+          requested_revision = os.environ["MODEL_REVISION"].strip()
           private = os.environ["SPACE_PRIVATE"].lower() == "true"
-
-          if len(revision) < 12:
-              raise SystemExit("model_revision must be an immutable commit/revision, not a floating branch")
+          model_id = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
 
           api = HfApi(token=token)
+          if requested_revision.upper() == "AUTO":
+              revision = api.model_info(model_id).sha
+          else:
+              revision = requested_revision
+          if not revision or len(revision) < 12 or revision.lower() in {"main", "master", "latest"}:
+              raise SystemExit("model_revision must resolve to an immutable commit SHA")
+
           api.create_repo(
               repo_id=space_id,
               repo_type="space",
@@ -69,6 +75,11 @@ jobs:
               key="CINEFORGE_MODEL_REVISION",
               value=revision,
           )
+          api.add_space_variable(
+              repo_id=space_id,
+              key="CINEFORGE_MODEL_ID",
+              value=model_id,
+          )
           api.upload_folder(
               repo_id=space_id,
               repo_type="space",
@@ -77,6 +88,8 @@ jobs:
           runtime = api.get_space_runtime(space_id)
           print({
               "space_id": space_id,
+              "model_id": model_id,
+              "model_revision": revision,
               "stage": runtime.stage,
               "hardware": runtime.hardware,
               "requested_hardware": runtime.requested_hardware,
