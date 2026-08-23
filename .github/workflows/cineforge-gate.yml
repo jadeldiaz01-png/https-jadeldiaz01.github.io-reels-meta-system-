@@ -8,12 +8,14 @@ on:
       - "workers/**"
       - "docs/CINEFORGE_ARCHITECTURE.md"
       - ".github/workflows/cineforge-gate.yml"
+      - ".github/workflows/deploy-hf-zerogpu.yml"
   push:
     branches: [main]
     paths:
       - "cineforge/**"
       - "tests/**"
       - "workers/**"
+      - ".github/workflows/deploy-hf-zerogpu.yml"
 
 permissions:
   contents: read
@@ -43,6 +45,7 @@ jobs:
           gpu = json.loads(Path('cineforge/gpu_backend_research_2026.json').read_text())
           worker = Path('workers/hf_zerogpu/space/app.py').read_text()
           requirements = Path('workers/hf_zerogpu/space/requirements.txt').read_text()
+          deploy = Path('.github/workflows/deploy-hf-zerogpu.yml').read_text()
           assert p['default_decision'] == 'BLOCKED'
           assert p['research']['anti_bot_bypass'] is False
           assert p['research']['cloudflare_stealth_bypass'] is False
@@ -79,6 +82,13 @@ jobs:
           assert 'RENDERED_QC_PENDING' in worker
           assert 'spaces==0.51.1' in requirements
           assert 'diffusers==0.39.0' in requirements
+          assert 'workflow_dispatch:' in deploy
+          assert 'space_hardware="zero-a10g"' in deploy
+          assert 'CINEFORGE_MODEL_REVISION' in deploy
+          assert 'CINEFORGE_MODEL_ID' in deploy
+          assert 'secrets.HF_TOKEN' in deploy
+          assert 'model_info(model_id).sha' in deploy
+          assert 'huggingface_hub==0.35.0' in deploy
           PY
       - name: Run deterministic gate tests
         env:
