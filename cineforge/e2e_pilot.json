@@ -1,0 +1,43 @@
+{
+  "version": "1.0.0",
+  "pilot_id": "forest-light-rescue-001",
+  "status": "PROVIDER_UNAVAILABLE",
+  "concept": {
+    "title": "La luz que volvió al bosque",
+    "original": true,
+    "reference_source_footage_used": false,
+    "creative_pattern": "transformation_reveal",
+    "hook": "A tiny warm light appears beneath wet leaves and begins moving against the wind.",
+    "payoff": "The light reaches a dark seedling and the surrounding forest quietly comes alive."
+  },
+  "visual_bible": {
+    "format": "vertical 9:16",
+    "delivery": "1080x1920, 30fps, BT.709 SDR",
+    "look": "photoreal natural forest after rain, restrained cinematic contrast, protected highlights, detailed shadows",
+    "palette": "deep natural greens, wet earth neutrals, one warm amber story accent",
+    "camera": "ground-level macro-to-medium progression, motivated slow push and lateral tracking, stable geography",
+    "motion": "natural wind, droplets and foliage micro-motion; no speed ramps",
+    "continuity": "same amber light, same seedling, wet forest state and direction of travel across all shots"
+  },
+  "shots": [
+    {"id":"S1","duration_s":3,"purpose":"hook","prompt":"Ground-level close shot in a rain-wet forest at dawn. A tiny warm amber light glows beneath dark green leaves and unexpectedly moves against the direction of the wind. Photoreal detail, wet specular reflections, protected highlights, subtle handheld breathing only, vertical composition."},
+    {"id":"S2","duration_s":3,"purpose":"escalation","prompt":"Track beside the same tiny amber light as it travels across wet moss and roots. Foreground leaves pass naturally, midground path remains readable, droplets react physically to movement, coherent dawn lighting, no morphing, vertical frame."},
+    {"id":"S3","duration_s":3,"purpose":"reveal","prompt":"The same amber light reaches a small dark seedling. Camera makes a restrained slow push as the seedling catches the glow; nearby droplets and leaves gain subtle warm reflections. Natural transformation, no magical explosion, photoreal physics."},
+    {"id":"S4","duration_s":3,"purpose":"payoff_hold","prompt":"Medium vertical shot holds on the now gently illuminated seedling while the forest background gradually reveals soft morning light. The amber light settles at its base. Calm consequence hold, layered depth, natural wind and water micro-motion."}
+  ],
+  "audio_plan": {
+    "dialogue": false,
+    "native_scene_audio_preferred": true,
+    "design": "light rain tail, leaf movement, tiny water impacts, restrained tonal rise at reveal; no copyrighted song required"
+  },
+  "qc": {
+    "require_identity_continuity": true,
+    "require_temporal_coherence": true,
+    "require_contact_physics": true,
+    "reject_flicker": true,
+    "reject_morphing": true,
+    "reject_watermark": true,
+    "require_master_1080x1920": true
+  },
+  "execution_note": "The connected Runway workspace authenticated successfully but exposes no video models, so no real render was attempted. This is an auditable provider availability block, not a generated-video claim."
+}
