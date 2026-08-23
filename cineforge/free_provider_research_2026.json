@@ -1,0 +1,109 @@
+{
+  "as_of": "2026-08-23",
+  "policy": {
+    "free_means": "no mandatory per-render API fee; local compute may still incur GPU/electricity/infrastructure cost",
+    "production_requires": [
+      "license verified",
+      "checkpoint pinned",
+      "dependencies locked",
+      "provider enabled explicitly",
+      "smoke render passes decode integrity",
+      "visual QC passes",
+      "continuity QC passes when applicable",
+      "provenance recorded"
+    ],
+    "consumer_free_ui_is_not_production_api": true,
+    "watermarked_outputs_not_eligible_for_master": true,
+    "cost_never_overrides_quality_floor": true
+  },
+  "ranked_candidates": [
+    {
+      "rank": 1,
+      "model": "wan2.2-a14b / ti2v-5b",
+      "class": "FREE_LOCAL",
+      "why": "best overall first-party open runtime balance; T2V/I2V/TI2V, 720p paths, active Diffusers/ComfyUI ecosystem",
+      "license": "Apache-2.0",
+      "hardware": "TI2V-5B practical target around 24GB VRAM; official A14B native path is much heavier",
+      "status": "candidate_not_provisioned"
+    },
+    {
+      "rank": 2,
+      "model": "skyreels-v2",
+      "class": "FREE_LOCAL",
+      "why": "strong open-model quality; project reports VBench total 83.9 and quality 84.7, plus long-video diffusion-forcing",
+      "license": "Skywork Community License",
+      "hardware": "large model; capacity validation required",
+      "status": "candidate_license_review"
+    },
+    {
+      "rank": 3,
+      "model": "framepack",
+      "class": "FREE_LOCAL",
+      "why": "strongest low-VRAM operational candidate; official project reports 6GB minimum GPU memory for its FramePack runtime",
+      "license": "Apache-2.0 code; underlying model/checkpoint license must also be verified",
+      "hardware": "RTX 30/40/50 series, >=6GB per project guidance",
+      "status": "candidate_checkpoint_license_review"
+    },
+    {
+      "rank": 4,
+      "model": "open-sora-2.0",
+      "class": "FREE_LOCAL",
+      "why": "Apache-2.0 open research pipeline and useful benchmark/reference fallback",
+      "license": "Apache-2.0",
+      "benchmark": "81.5 VBench total in SkyReels-V2 comparison table",
+      "status": "candidate_not_provisioned"
+    },
+    {
+      "rank": 5,
+      "model": "cogvideox1.5-5b",
+      "class": "FREE_LOCAL",
+      "why": "mature Diffusers ecosystem and 1360x768 generation; useful compatibility fallback",
+      "license": "CogVideoX model license; commercial registration required for 5B",
+      "benchmark": "80.3 VBench total in SkyReels-V2 comparison table",
+      "status": "candidate_license_gate"
+    },
+    {
+      "rank": 6,
+      "model": "cogvideox-2b",
+      "class": "FREE_LOCAL",
+      "why": "lower-resource Apache-2.0 fallback",
+      "license": "Apache-2.0 for 2B model",
+      "status": "candidate_not_provisioned"
+    },
+    {
+      "rank": 7,
+      "model": "mochi-1-preview",
+      "class": "FREE_LOCAL",
+      "why": "Apache-2.0 motion-quality baseline, but official implementation is resource-heavy",
+      "license": "Apache-2.0",
+      "hardware": "official repo approximately 60GB VRAM single-GPU; ComfyUI can reduce memory",
+      "status": "experimental_high_resource"
+    },
+    {
+      "rank": 8,
+      "model": "ltx-video / ltx-2.x",
+      "class": "FREE_LOCAL",
+      "why": "fast workflows and newer synchronized audio+video capability",
+      "license": "checkpoint/version-specific; LTX-2.x Community License includes commercial revenue threshold conditions",
+      "status": "candidate_license_review"
+    },
+    {
+      "rank": 9,
+      "model": "hunyuanvideo-1.5",
+      "class": "FREE_LOCAL",
+      "why": "capable local option but legal/territory restrictions require stricter gating",
+      "license": "Tencent community license / territory gate",
+      "status": "candidate_geo_license_gate"
+    }
+  ],
+  "excluded_as_durable_free_runtime": [
+    {
+      "provider": "Runway Free",
+      "reason": "consumer free credits are not a durable free API runtime; current connected workspace has no video models enabled"
+    },
+    {
+      "provider": "Luma Free",
+      "reason": "consumer free tier is not a durable automated production API and may watermark outputs"
+    }
+  ]
+}
