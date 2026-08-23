@@ -26,6 +26,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   deploy:
@@ -77,21 +78,9 @@ jobs:
               private=private,
               exist_ok=True,
           )
-          api.add_space_variable(
-              repo_id=space_id,
-              key="CINEFORGE_MODEL_REVISION",
-              value=revision,
-          )
-          api.add_space_variable(
-              repo_id=space_id,
-              key="CINEFORGE_MODEL_ID",
-              value=model_id,
-          )
-          api.upload_folder(
-              repo_id=space_id,
-              repo_type="space",
-              folder_path="workers/hf_zerogpu/space",
-          )
+          api.add_space_variable(repo_id=space_id, key="CINEFORGE_MODEL_REVISION", value=revision)
+          api.add_space_variable(repo_id=space_id, key="CINEFORGE_MODEL_ID", value=model_id)
+          api.upload_folder(repo_id=space_id, repo_type="space", folder_path="workers/hf_zerogpu/space")
           runtime = api.get_space_runtime(space_id)
           print({
               "space_id": space_id,
@@ -116,3 +105,11 @@ jobs:
               raise SystemExit(f"ZeroGPU not requested: {requested}")
           print(f"ZeroGPU requested: {requested}; stage={runtime.stage}")
           PY
+      - name: Report deployment result to trigger issue
+        if: always() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body "deploy-hf-zerogpu result: **$JOB_STATUS**. No secret values are included. If success, verify Makubezxjadel/cineforge-zerogpu and continue with smoke/QC/provenance; if failure, inspect the Actions job logs."
