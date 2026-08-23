@@ -1,0 +1,53 @@
+{
+  "as_of": "2026-08-23",
+  "objective": "obtain the first real CineForge GPU smoke render without claiming readiness before runtime evidence exists",
+  "primary": {
+    "backend": "huggingface_zerogpu_large",
+    "hardware": "half NVIDIA RTX Pro 6000 Blackwell",
+    "vram_gb": 48,
+    "free_account_daily_gpu_minutes": 5,
+    "queue_priority": "medium",
+    "hosting_eligibility": "personal account in good standing, verified email, account older than 30 days; up to 2 ZeroGPU Spaces",
+    "sdk": "Gradio only",
+    "gpu_function_max_duration_seconds": 270,
+    "model": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+    "model_license": "Apache-2.0",
+    "official_model_min_vram_gb": 24,
+    "model_native_vertical_size": "704x1280",
+    "model_native_fps": 24,
+    "smoke_frames": 81,
+    "nominal_smoke_duration_seconds": 3.375,
+    "status": "DEPLOYABLE_CODE_READY_ACCOUNT_SPACE_NOT_YET_OBSERVED"
+  },
+  "fallbacks": [
+    {
+      "backend": "kaggle_notebook_p100",
+      "hardware": "single NVIDIA Tesla P100",
+      "session_limit_hours": 12,
+      "availability": "free but demand/queue limited",
+      "routing": "detect VRAM at runtime; expected 12-23 GB class routes to CogVideoX-2B",
+      "status": "SESSION_FALLBACK"
+    },
+    {
+      "backend": "google_colab_free",
+      "hardware": "variable",
+      "availability": "not guaranteed",
+      "routing": "runtime detection mandatory; 6-11 GB FramePack, 12-23 GB CogVideoX-2B, 24+ GB Wan2.2 TI2V-5B",
+      "status": "INTERACTIVE_FALLBACK"
+    }
+  ],
+  "activation_gates": [
+    "Space/account eligibility observed",
+    "ZeroGPU large selected",
+    "immutable Wan2.2 model revision configured",
+    "real GPU metadata >=24 GB observed",
+    "3-5 second original render materialized",
+    "output SHA-256 recorded",
+    "ffprobe/decode integrity passes",
+    "visual QC passes",
+    "watermark gate passes",
+    "policy gate passes",
+    "SmokeRenderEvidence eligible_to_enable=true"
+  ],
+  "fail_closed": true
+}
