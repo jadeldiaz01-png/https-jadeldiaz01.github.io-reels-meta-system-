@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "source_count": 10,
+  "usage": "quality_and_pattern_reference_only",
+  "copyright_rule": "Do not copy source footage, watermark, creator identity, exact composition, exact action sequence, dialogue or audio. Extract only abstract technical/perceptual and storytelling patterns.",
+  "measured_aggregate": {
+    "duration_seconds": {"min": 10.546, "median": 15.366, "max": 22.207},
+    "frame_rate_fps": 30.0,
+    "frame_rate_consistency": "10_of_10",
+    "video_codec_source": "hevc",
+    "source_resolution_dominant": "720x1280",
+    "source_color_space": "bt709",
+    "source_color_transfer": "bt709",
+    "source_audio_codec": "aac",
+    "source_audio_sample_rate_hz": 44100,
+    "motion_proxy": {"min": 0.0719, "median": 0.1230, "max": 0.2517},
+    "luma_mean": {"min": 0.1758, "max": 0.4029},
+    "saturation_mean": {"min": 0.1158, "max": 0.7447},
+    "highlight_clip_median": 0.0001235,
+    "shadow_clip_median": 0.017535
+  },
+  "delivery_upgrade": {
+    "minimum_resolution": "1080x1920",
+    "aspect_ratio": "9:16",
+    "target_fps": 30,
+    "video_codec": "h264_high_profile",
+    "audio_codec": "aac",
+    "audio_sample_rate_hz": 48000,
+    "color_space": "bt709_sdr",
+    "faststart": true
+  },
+  "shared_perceptual_traits": [
+    "immediate_readable_subject",
+    "cause_effect_clarity",
+    "visual_payoff",
+    "authentic_or_naturalistic_motion",
+    "simple_observational_camera_language",
+    "minimal_dependency_on_text",
+    "reaction_or_consequence_hold",
+    "foreground_midground_background_when_environment_matters",
+    "subject_background_separation",
+    "stable_spatial_geography",
+    "originality_over_effect_density"
+  ],
+  "pattern_families": {
+    "physical_risk_action": {"observed_examples": 2, "priority": "high"},
+    "animal_expression": {"observed_examples": 2, "priority": "high"},
+    "human_reaction": {"observed_examples": 2, "priority": "high"},
+    "transformation_reveal": {"observed_examples": 1, "priority": "medium"},
+    "sports_payoff": {"observed_examples": 1, "priority": "medium"},
+    "comedic_fail": {"observed_examples": 2, "priority": "high"}
+  },
+  "cineforge_decisions": {
+    "prefer_single_clear_event_over_many_weak_events": true,
+    "preserve_setup_before_payoff": true,
+    "hold_reaction_after_payoff": true,
+    "camera_motion_requires_narrative_motivation": true,
+    "do_not_require_cinematic_shallow_dof_for_every_scene": true,
+    "preserve_environment_context_when_action_depends_on_geography": true,
+    "prefer_natural_motion_to_excessive_speed_ramps": true,
+    "use_text_only_when_it_adds_information": true,
+    "reject_watermarks_in_generated_master": true,
+    "reject_reference_identity_copy": true,
+    "reject_low_value_repost_style": true,
+    "require_original_concept": true
+  }
+}
