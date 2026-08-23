@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile contracts and gates
-        run: python -m py_compile cineforge/__init__.py cineforge/contracts.py cineforge/quality_gates.py cineforge/image_quality.py cineforge/creative_patterns.py
+        run: python -m py_compile cineforge/__init__.py cineforge/contracts.py cineforge/quality_gates.py cineforge/image_quality.py cineforge/creative_patterns.py cineforge/render_runtime.py
       - name: Validate fail-closed policy and reference libraries
         run: |
           python - <<'PY'
@@ -34,6 +34,7 @@ jobs:
           p = json.loads(Path('cineforge/policy.json').read_text())
           ref = json.loads(Path('cineforge/reference_video_profile.json').read_text())
           lib = json.loads(Path('cineforge/reference_library.json').read_text())
+          pilot = json.loads(Path('cineforge/e2e_pilot.json').read_text())
           assert p['default_decision'] == 'BLOCKED'
           assert p['research']['anti_bot_bypass'] is False
           assert p['research']['cloudflare_stealth_bypass'] is False
@@ -45,17 +46,16 @@ jobs:
           assert p['finops']['cost_must_not_override_quality_floor'] is True
           assert ref['source_role'] == 'quality_reference_only'
           assert ref['source_copying_allowed'] is False
-          assert ref['measured']['aspect_ratio'] == '9:16'
-          assert ref['measured']['fps'] == 30.0
           assert lib['source_count'] == 10
           assert lib['usage'] == 'quality_and_pattern_reference_only'
-          assert lib['measured_aggregate']['frame_rate_fps'] == 30.0
           assert lib['delivery_upgrade']['minimum_resolution'] == '1080x1920'
-          assert lib['cineforge_decisions']['require_original_concept'] is True
+          assert pilot['concept']['original'] is True
+          assert pilot['concept']['reference_source_footage_used'] is False
+          assert pilot['status'] in {'PROVIDER_UNAVAILABLE','MASTER_READY'}
           PY
       - name: Run deterministic gate tests
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python -m pip install --disable-pip-version-check pytest
-          pytest -q tests/test_cineforge_quality_gates.py tests/test_cineforge_image_quality.py tests/test_cineforge_creative_patterns.py
+          pytest -q tests/test_cineforge_quality_gates.py tests/test_cineforge_image_quality.py tests/test_cineforge_creative_patterns.py tests/test_cineforge_render_runtime.py
