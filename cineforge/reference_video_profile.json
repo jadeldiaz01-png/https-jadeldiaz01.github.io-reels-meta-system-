@@ -1,0 +1,50 @@
+{
+  "profile_id": "reference-loaded-2026-08-17",
+  "source_role": "quality_reference_only",
+  "source_copying_allowed": false,
+  "measured": {
+    "duration_seconds": 30.105,
+    "width": 720,
+    "height": 1280,
+    "aspect_ratio": "9:16",
+    "fps": 30.0,
+    "video_codec": "hevc",
+    "video_bitrate_bps": 4322290,
+    "pixel_format": "yuv420p",
+    "color_space": "bt709",
+    "color_transfer": "bt709",
+    "color_primaries": "bt709",
+    "audio_codec": "aac",
+    "audio_sample_rate_hz": 44100,
+    "audio_channels": 2
+  },
+  "perceptual_signature": {
+    "natural_available_light": true,
+    "sunset_highlight_gradient": true,
+    "wet_surface_specular_reflections": true,
+    "foreground_midground_background_depth": true,
+    "stable_horizon": true,
+    "clear_human_subject_separation": true,
+    "natural_motion_cadence": true,
+    "action_progression_without_text": true,
+    "restrained_camera_motion": true,
+    "environmental_context_preserved": true
+  },
+  "delivery_upgrade": {
+    "minimum_width": 1080,
+    "minimum_height": 1920,
+    "target_fps": 30,
+    "target_video_codec": "h264",
+    "target_audio_codec": "aac",
+    "target_audio_sample_rate_hz": 48000,
+    "target_color_space": "bt709",
+    "faststart_required": true
+  },
+  "do_not_copy": [
+    "people_identity",
+    "watermark_or_handle",
+    "exact_location_composition",
+    "exact_action_sequence",
+    "third_party_audio"
+  ]
+}
