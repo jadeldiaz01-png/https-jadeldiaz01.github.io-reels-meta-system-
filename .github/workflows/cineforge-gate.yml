@@ -5,6 +5,7 @@ on:
     paths:
       - "cineforge/**"
       - "tests/**"
+      - "workers/**"
       - "docs/CINEFORGE_ARCHITECTURE.md"
       - ".github/workflows/cineforge-gate.yml"
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - "cineforge/**"
       - "tests/**"
+      - "workers/**"
 
 permissions:
   contents: read
@@ -25,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile contracts and gates
-        run: python -m py_compile cineforge/__init__.py cineforge/contracts.py cineforge/quality_gates.py cineforge/image_quality.py cineforge/creative_patterns.py cineforge/render_runtime.py cineforge/free_providers.py cineforge/worker_discovery.py
+        run: python -m py_compile cineforge/__init__.py cineforge/contracts.py cineforge/quality_gates.py cineforge/image_quality.py cineforge/creative_patterns.py cineforge/render_runtime.py cineforge/free_providers.py cineforge/worker_discovery.py cineforge/gpu_provisioning.py cineforge/smoke_render.py
       - name: Validate fail-closed policy and reference libraries
         run: |
           python - <<'PY'
@@ -38,6 +40,7 @@ jobs:
           free = json.loads(Path('cineforge/free_provider_manifest.json').read_text())
           research = json.loads(Path('cineforge/free_provider_research_2026.json').read_text())
           compute = json.loads(Path('cineforge/free_compute_backends_2026.json').read_text())
+          gpu = json.loads(Path('cineforge/gpu_backend_research_2026.json').read_text())
           assert p['default_decision'] == 'BLOCKED'
           assert p['research']['anti_bot_bypass'] is False
           assert p['research']['cloudflare_stealth_bypass'] is False
@@ -65,10 +68,14 @@ jobs:
           assert compute['routing']['vram_6_to_11_gb'] == 'framepack'
           assert compute['routing']['vram_24_plus_gb'] == 'wan2.2-ti2v-5b'
           assert compute['observed_current_session']['cuda_available'] is False
+          assert gpu['methodology']['rule'].startswith('a backend is never production-enabled')
+          assert gpu['smoke_policy']['minimum_vram_gb'] == 6
+          assert gpu['smoke_policy']['require_sha256_provenance'] is True
+          assert any(x['name'] == 'huggingface_zerogpu_large' and x['vram_gb'] == 48 for x in gpu['backends'])
           PY
       - name: Run deterministic gate tests
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python -m pip install --disable-pip-version-check pytest
-          pytest -q tests/test_cineforge_quality_gates.py tests/test_cineforge_image_quality.py tests/test_cineforge_creative_patterns.py tests/test_cineforge_render_runtime.py tests/test_cineforge_free_providers.py tests/test_cineforge_worker_discovery.py
+          pytest -q tests/test_cineforge_quality_gates.py tests/test_cineforge_image_quality.py tests/test_cineforge_creative_patterns.py tests/test_cineforge_render_runtime.py tests/test_cineforge_free_providers.py tests/test_cineforge_worker_discovery.py tests/test_cineforge_gpu_provisioning.py

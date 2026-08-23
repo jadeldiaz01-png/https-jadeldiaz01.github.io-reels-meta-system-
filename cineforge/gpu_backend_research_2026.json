@@ -1,0 +1,81 @@
+{
+  "as_of": "2026-08-23",
+  "methodology": {
+    "dimensions": ["vram", "persistence", "automation", "free_quota", "queue_risk", "ephemerality", "license_and_terms_risk"],
+    "rule": "a backend is never production-enabled from research data alone; runtime observation plus smoke QC is mandatory"
+  },
+  "backends": [
+    {
+      "name": "persistent_local_or_vps_nvidia",
+      "type": "PERSISTENT",
+      "vram": "runtime detected",
+      "free_quota": "no API quota; infrastructure cost may exist",
+      "automation": "full",
+      "persistence_score": 1.0,
+      "automation_score": 1.0,
+      "queue_risk": 0.0,
+      "quota_risk": 0.0,
+      "priority": 1
+    },
+    {
+      "name": "huggingface_zerogpu_large",
+      "type": "SHARED_API",
+      "vram_gb": 48,
+      "free_quota_minutes_day": 5,
+      "automation": "Gradio/Space API",
+      "persistence_score": 0.35,
+      "automation_score": 0.85,
+      "queue_risk": 0.45,
+      "quota_risk": 0.85,
+      "priority": 2,
+      "note": "excellent VRAM for short smoke renders; daily quota is the dominant constraint"
+    },
+    {
+      "name": "huggingface_zerogpu_xlarge",
+      "type": "SHARED_API",
+      "vram_gb": 96,
+      "quota_cost_multiplier": 2,
+      "free_quota_minutes_day": 5,
+      "automation": "Gradio/Space API",
+      "persistence_score": 0.35,
+      "automation_score": 0.85,
+      "queue_risk": 0.45,
+      "quota_risk": 0.92,
+      "priority": 3
+    },
+    {
+      "name": "kaggle_notebook_p100",
+      "type": "SESSION",
+      "vram": "P100 class; detect exact VRAM at runtime",
+      "free_quota": "weekly/floating and demand dependent",
+      "automation": "notebook/session oriented",
+      "persistence_score": 0.20,
+      "automation_score": 0.35,
+      "queue_risk": 0.35,
+      "quota_risk": 0.45,
+      "priority": 4
+    },
+    {
+      "name": "google_colab_free",
+      "type": "SESSION",
+      "vram": "variable; runtime detection mandatory",
+      "free_quota": "dynamic and undisclosed",
+      "automation": "interactive notebook",
+      "persistence_score": 0.15,
+      "automation_score": 0.25,
+      "queue_risk": 0.40,
+      "quota_risk": 0.60,
+      "priority": 5
+    }
+  ],
+  "smoke_policy": {
+    "duration_seconds": [3, 5],
+    "original_prompt_only": true,
+    "minimum_vram_gb": 6,
+    "require_decode_integrity": true,
+    "require_visual_qc": true,
+    "require_no_watermark": true,
+    "require_sha256_provenance": true,
+    "activation_result": "provider may be enabled only after all gates pass"
+  }
+}
