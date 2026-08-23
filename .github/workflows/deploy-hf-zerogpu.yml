@@ -17,6 +17,10 @@ on:
         default: "true"
         type: choice
         options: ["true", "false"]
+  push:
+    branches: [main]
+    paths:
+      - ".cineforge/deploy-hf-zerogpu.trigger"
 
 permissions:
   contents: read
@@ -40,9 +44,9 @@ jobs:
       - name: Create or update ZeroGPU Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          SPACE_ID: ${{ inputs.space_id }}
-          MODEL_REVISION: ${{ inputs.model_revision }}
-          SPACE_PRIVATE: ${{ inputs.private }}
+          SPACE_ID: ${{ github.event.inputs.space_id || 'Makubezxjadel/cineforge-zerogpu' }}
+          MODEL_REVISION: ${{ github.event.inputs.model_revision || 'AUTO' }}
+          SPACE_PRIVATE: ${{ github.event.inputs.private || 'true' }}
         run: |
           python - <<'PY'
           import os
@@ -98,7 +102,7 @@ jobs:
       - name: Verify ZeroGPU requested
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          SPACE_ID: ${{ inputs.space_id }}
+          SPACE_ID: ${{ github.event.inputs.space_id || 'Makubezxjadel/cineforge-zerogpu' }}
         run: |
           python - <<'PY'
           import os
