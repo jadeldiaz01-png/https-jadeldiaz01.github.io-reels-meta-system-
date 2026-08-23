@@ -1,0 +1,48 @@
+{
+  "version": "1.0.0",
+  "default_state": "DISABLED",
+  "selection_order": ["FREE_LOCAL", "APPROVED_PAID_API"],
+  "providers": {
+    "wan2.2": {
+      "class": "FREE_LOCAL",
+      "enabled": false,
+      "license": "Apache-2.0",
+      "requires_gpu": true,
+      "activation_requires_smoke_qc": true
+    },
+    "ltx-video-classic": {
+      "class": "FREE_LOCAL",
+      "enabled": false,
+      "license_gate": "verify_code_and_checkpoint_license",
+      "requires_gpu": true,
+      "activation_requires_smoke_qc": true
+    },
+    "hunyuanvideo-1.5": {
+      "class": "FREE_LOCAL",
+      "enabled": false,
+      "license": "Tencent Hunyuan Community License",
+      "territory_gate_required": true,
+      "excluded_territories": ["European Union", "United Kingdom", "South Korea"],
+      "requires_gpu": true,
+      "activation_requires_smoke_qc": true
+    },
+    "runway-free": {
+      "class": "FREE_TRIAL",
+      "enabled": false,
+      "production_eligible": false,
+      "reason": "consumer credits are not API credits; model availability is variable; free video may include watermark"
+    },
+    "luma-free": {
+      "class": "FREE_TRIAL",
+      "enabled": false,
+      "production_eligible": false,
+      "reason": "draft/personal-use and watermark constraints; API billing is separate"
+    }
+  },
+  "policy": {
+    "no_consumer_ui_automation": true,
+    "no_watermarked_commercial_master": true,
+    "cost_never_overrides_quality_floor": true,
+    "fail_closed_when_no_provider_meets_floor": true
+  }
+}
