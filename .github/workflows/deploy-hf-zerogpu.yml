@@ -21,12 +21,15 @@ on:
     branches: [main]
     paths:
       - ".cineforge/deploy-hf-zerogpu.trigger"
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
 
 jobs:
   deploy:
+    if: github.event_name != 'issues' || github.event.issue.title == '[CineForge] Deploy ZeroGPU'
     runs-on: ubuntu-latest
     environment: cineforge-hf-zerogpu
     steps:
