@@ -35,6 +35,8 @@ jobs:
           ref = json.loads(Path('cineforge/reference_video_profile.json').read_text())
           lib = json.loads(Path('cineforge/reference_library.json').read_text())
           pilot = json.loads(Path('cineforge/e2e_pilot.json').read_text())
+          free = json.loads(Path('cineforge/free_provider_manifest.json').read_text())
+          research = json.loads(Path('cineforge/free_provider_research_2026.json').read_text())
           assert p['default_decision'] == 'BLOCKED'
           assert p['research']['anti_bot_bypass'] is False
           assert p['research']['cloudflare_stealth_bypass'] is False
@@ -52,6 +54,11 @@ jobs:
           assert pilot['concept']['original'] is True
           assert pilot['concept']['reference_source_footage_used'] is False
           assert pilot['status'] in {'PROVIDER_UNAVAILABLE','MASTER_READY'}
+          assert free['policy']['fail_closed_when_no_provider_meets_floor'] is True
+          assert research['policy']['consumer_free_ui_is_not_production_api'] is True
+          assert research['policy']['watermarked_outputs_not_eligible_for_master'] is True
+          assert len(research['ranked_candidates']) >= 9
+          assert research['ranked_candidates'][0]['model'].startswith('wan2.2')
           PY
       - name: Run deterministic gate tests
         env:
