@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "component": "reels-meta-cineforge-media-adapter",
+  "decision": "BLOCKED",
+  "gates": {
+    "fail_closed_policy": true,
+    "human_publication_approval": true,
+    "quality_floor": true,
+    "originality_reference_only": true,
+    "provider_model_revision_pinning": true,
+    "runtime_gpu_detection": true,
+    "sha256_provenance_required": true,
+    "deterministic_quality_tests": true,
+    "immutable_actions": true,
+    "public_issue_deployment_trigger_removed": true,
+    "exact_sha_deployment": true,
+    "managed_hf_token_verified": false,
+    "zerogpu_space_runtime_verified": false,
+    "render_smoke_qc_evidence": false,
+    "protected_default_branch": false,
+    "verified_head_signature": false
+  },
+  "blockers": [
+    {"owner": "human_admin", "id": "hf_credentials", "reason": "Authorize the Hugging Face deployment credential/environment before deployment certification."},
+    {"owner": "evidence", "id": "runtime", "reason": "Run exact-SHA ZeroGPU deployment/smoke/QC/provenance certification."},
+    {"owner": "human_admin", "id": "repository_governance", "reason": "Protect main and require cineforge-gate before production promotion."}
+  ]
+}

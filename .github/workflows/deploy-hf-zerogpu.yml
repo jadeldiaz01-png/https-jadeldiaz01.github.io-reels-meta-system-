@@ -3,6 +3,10 @@ name: deploy-hf-zerogpu
 on:
   workflow_dispatch:
     inputs:
+      expected_sha:
+        description: "Exact 40-character repository SHA to deploy"
+        required: true
+        type: string
       space_id:
         description: "Hugging Face Space id (username/space-name)"
         required: true
@@ -17,99 +21,83 @@ on:
         default: "true"
         type: choice
         options: ["true", "false"]
-  push:
-    branches: [main]
-    paths:
-      - ".cineforge/deploy-hf-zerogpu.trigger"
-  issues:
-    types: [opened, edited]
+      apply:
+        description: "Perform external deployment after validation"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
-  deploy:
-    if: github.event_name != 'issues' || github.event.issue.title == '[CineForge] Deploy ZeroGPU'
+  validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate exact SHA input
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.expected_sha }}" =~ ^[0-9a-f]{40}$ ]]
+      - name: Checkout exact immutable revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.expected_sha }}
+          persist-credentials: false
+      - name: Verify checkout and worker source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          test -s workers/hf_zerogpu/space/app.py
+          grep -Fq 'CINEFORGE_MODEL_REVISION' workers/hf_zerogpu/space/app.py
+          echo 'ZEROGPU_PREFLIGHT=PASS'
+
+  deploy:
+    if: ${{ inputs.apply == true }}
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: cineforge-hf-zerogpu
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout exact immutable revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.expected_sha }}
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Validate required secret
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          test -n "$HF_TOKEN" || (echo "HF_TOKEN secret missing" && exit 1)
+        run: test -n "$HF_TOKEN" || (echo "HF_TOKEN secret missing" && exit 1)
       - name: Install pinned Hub client
         run: python -m pip install --disable-pip-version-check "huggingface_hub==0.35.0"
       - name: Create or update ZeroGPU Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          SPACE_ID: ${{ github.event.inputs.space_id || 'Makubezxjadel/cineforge-zerogpu' }}
-          MODEL_REVISION: ${{ github.event.inputs.model_revision || 'AUTO' }}
-          SPACE_PRIVATE: ${{ github.event.inputs.private || 'true' }}
+          SPACE_ID: ${{ inputs.space_id }}
+          MODEL_REVISION: ${{ inputs.model_revision }}
+          SPACE_PRIVATE: ${{ inputs.private }}
         run: |
+          set -euo pipefail
           python - <<'PY'
-          import os
+          import os, re
           from huggingface_hub import HfApi
-
-          token = os.environ["HF_TOKEN"]
-          space_id = os.environ["SPACE_ID"]
-          requested_revision = os.environ["MODEL_REVISION"].strip()
-          private = os.environ["SPACE_PRIVATE"].lower() == "true"
-          model_id = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
-
-          api = HfApi(token=token)
-          if requested_revision.upper() == "AUTO":
-              revision = api.model_info(model_id).sha
-          else:
-              revision = requested_revision
-          if not revision or len(revision) < 12 or revision.lower() in {"main", "master", "latest"}:
-              raise SystemExit("model_revision must resolve to an immutable commit SHA")
-
-          api.create_repo(
-              repo_id=space_id,
-              repo_type="space",
-              space_sdk="gradio",
-              space_hardware="zero-a10g",
-              private=private,
-              exist_ok=True,
-          )
-          api.add_space_variable(repo_id=space_id, key="CINEFORGE_MODEL_REVISION", value=revision)
-          api.add_space_variable(repo_id=space_id, key="CINEFORGE_MODEL_ID", value=model_id)
-          api.upload_folder(repo_id=space_id, repo_type="space", folder_path="workers/hf_zerogpu/space")
-          runtime = api.get_space_runtime(space_id)
-          print({
-              "space_id": space_id,
-              "model_id": model_id,
-              "model_revision": revision,
-              "stage": runtime.stage,
-              "hardware": runtime.hardware,
-              "requested_hardware": runtime.requested_hardware,
-          })
+          token=os.environ['HF_TOKEN']; space_id=os.environ['SPACE_ID']; requested=os.environ['MODEL_REVISION'].strip()
+          private=os.environ['SPACE_PRIVATE'].lower() == 'true'; model_id='Wan-AI/Wan2.2-TI2V-5B-Diffusers'
+          api=HfApi(token=token)
+          revision=api.model_info(model_id).sha if requested.upper() == 'AUTO' else requested
+          if not revision or not re.fullmatch(r'[0-9a-f]{40,64}', revision):
+              raise SystemExit('model_revision must resolve to an immutable commit SHA')
+          api.create_repo(repo_id=space_id, repo_type='space', space_sdk='gradio', space_hardware='zero-a10g', private=private, exist_ok=True)
+          api.add_space_variable(repo_id=space_id, key='CINEFORGE_MODEL_REVISION', value=revision)
+          api.add_space_variable(repo_id=space_id, key='CINEFORGE_MODEL_ID', value=model_id)
+          api.upload_folder(repo_id=space_id, repo_type='space', folder_path='workers/hf_zerogpu/space')
+          runtime=api.get_space_runtime(space_id)
+          requested_hardware=str(runtime.requested_hardware or runtime.hardware or '')
+          if 'zero' not in requested_hardware.lower():
+              raise SystemExit(f'ZeroGPU not requested: {requested_hardware}')
+          print({'space_id':space_id,'model_revision':revision,'stage':runtime.stage,'requested_hardware':requested_hardware})
           PY
-      - name: Verify ZeroGPU requested
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          SPACE_ID: ${{ github.event.inputs.space_id || 'Makubezxjadel/cineforge-zerogpu' }}
-        run: |
-          python - <<'PY'
-          import os
-          from huggingface_hub import HfApi
-          runtime = HfApi(token=os.environ["HF_TOKEN"]).get_space_runtime(os.environ["SPACE_ID"])
-          requested = str(runtime.requested_hardware or runtime.hardware or "")
-          if "zero" not in requested:
-              raise SystemExit(f"ZeroGPU not requested: {requested}")
-          print(f"ZeroGPU requested: {requested}; stage={runtime.stage}")
-          PY
-      - name: Report deployment result to trigger issue
-        if: always() && github.event_name == 'issues'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          gh issue comment "$ISSUE_NUMBER" --body "deploy-hf-zerogpu result: **$JOB_STATUS**. No secret values are included. If success, verify Makubezxjadel/cineforge-zerogpu and continue with smoke/QC/provenance; if failure, inspect the Actions job logs."
