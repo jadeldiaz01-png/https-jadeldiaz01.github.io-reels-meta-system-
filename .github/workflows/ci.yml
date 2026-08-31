@@ -1,0 +1,57 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  p0b:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: revenue_engine
+          POSTGRES_USER: engine
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U engine -d revenue_engine"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://engine:ci-only-password@localhost:5432/revenue_engine
+      POSTGRES_PASSWORD: ci-compose-password
+      BAO_DEV_ROOT_TOKEN: ci-compose-openbao-token
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[test]'
+      - name: Apply P0-B schema
+        run: |
+          python - <<'PY'
+          import psycopg
+          sql = open('db/migrations/001_p0b.sql', encoding='utf-8').read()
+          with psycopg.connect('postgresql://engine:ci-only-password@localhost:5432/revenue_engine', autocommit=True) as conn:
+              for statement in sql.split(';'):
+                  if statement.strip():
+                      conn.execute(statement)
+          PY
+      - name: Unit and PostgreSQL integration tests
+        run: pytest -q
+      - name: Rego compile check
+        run: docker run --rm -v "$PWD/policies:/policies:ro" openpolicyagent/opa:1.17.0 check /policies/revenue_engine.rego
+      - name: OpenBao bootstrap syntax check
+        run: |
+          sh -n infra/openbao/bootstrap-sandbox.sh
+          sh -n infra/openbao/bootstrap-skills-runtime.sh
+          sh -n infra/openbao/renew-workload-token.sh
+      - name: Validate compose and application image
+        run: |
+          docker compose config >/dev/null
+          docker build -t revenue-engine:p0b .

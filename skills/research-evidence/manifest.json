@@ -1,0 +1,1 @@
+{"name":"research-evidence","version":"1.0.0","domain":"research","risk":"medium","entrypoint":"scripts/run.py","inputs":{"schema":"schemas/input.schema.json"},"outputs":{"type":"evidence_matrix"},"approvals":[],"evidence":["sources","claims","support_matrix","uncertainties"],"lifecycle":"TESTED","external_writes":false,"self_promotion":false}

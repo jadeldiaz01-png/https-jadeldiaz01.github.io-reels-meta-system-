@@ -1,0 +1,109 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: revenue_engine
+      POSTGRES_USER: engine
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engine -d revenue_engine"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/migrations/001_p0b.sql:/docker-entrypoint-initdb.d/001_p0b.sql:ro
+      - ./db/migrations/002_skills_runtime.sql:/docker-entrypoint-initdb.d/002_skills_runtime.sql:ro
+      - ./db/migrations/003_skills_runtime_operational.sql:/docker-entrypoint-initdb.d/003_skills_runtime_operational.sql:ro
+
+  opa:
+    image: openpolicyagent/opa:1.17.0
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+    volumes:
+      - ./policies:/policies:ro
+
+  openbao:
+    image: openbao/openbao:2.6.0
+    command: ["server", "-dev", "-dev-root-token-id=${BAO_DEV_ROOT_TOKEN:?set BAO_DEV_ROOT_TOKEN}"]
+    environment:
+      BAO_ADDR: http://0.0.0.0:8200
+    cap_add: ["IPC_LOCK"]
+
+  openbao-bootstrap:
+    image: openbao/openbao:2.6.0
+    depends_on:
+      openbao:
+        condition: service_started
+    environment:
+      BAO_ADDR: http://openbao:8200
+      BAO_BOOTSTRAP_TOKEN: ${BAO_DEV_ROOT_TOKEN:?set BAO_DEV_ROOT_TOKEN}
+    entrypoint: ["/bin/sh", "/config/bootstrap-skills-runtime.sh"]
+    volumes:
+      - ./infra/openbao:/config:ro
+      - openbao-runtime:/run/openbao
+    restart: "no"
+
+  openbao-renewer:
+    image: openbao/openbao:2.6.0
+    depends_on:
+      openbao-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      BAO_ADDR: http://openbao:8200
+      OPENBAO_TOKEN_FILE: /run/openbao/token
+      RENEW_INTERVAL_SECONDS: "600"
+    entrypoint: ["/bin/sh", "/config/renew-workload-token.sh"]
+    volumes:
+      - ./infra/openbao:/config:ro
+      - openbao-runtime:/run/openbao
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.157.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports: ["4317:4317", "4318:4318"]
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://engine:${POSTGRES_PASSWORD}@postgres:5432/revenue_engine
+      OPA_URL: http://opa:8181
+      ENVIRONMENT: sandbox
+      EXTERNAL_EXECUTION_ENABLED: "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opa:
+        condition: service_started
+    ports: ["8000:8000"]
+
+  skills-runtime:
+    build: .
+    command: ["uvicorn","app.skills_runtime_main:app","--host","0.0.0.0","--port","8010"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://engine:${POSTGRES_PASSWORD}@postgres:5432/revenue_engine
+      OPA_URL: http://opa:8181
+      OPENBAO_ADDR: http://openbao:8200
+      OPENBAO_TOKEN_FILE: /run/openbao/token
+      TRUSTED_IDENTITY_PROXY: "true"
+      SKILLS_REGISTRY_WRITERS: "verified-skill-generator,master-engineering-orchestrator,e2e-ci"
+      SKILLS_EVIDENCE_WRITERS: "skills-ci,e2e-ci"
+      SKILLS_BUNDLE_WRITERS: "skills-ci,e2e-ci"
+      ENVIRONMENT: sandbox
+    volumes:
+      - openbao-runtime:/run/openbao:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opa:
+        condition: service_started
+      openbao-bootstrap:
+        condition: service_completed_successfully
+      openbao-renewer:
+        condition: service_started
+
+volumes:
+  pgdata:
+  openbao-runtime:

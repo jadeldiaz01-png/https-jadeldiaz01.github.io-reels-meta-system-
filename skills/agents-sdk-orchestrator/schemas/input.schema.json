@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["goal","tools"],"properties":{"goal":{"type":"string","minLength":1},"tools":{"type":"array","items":{"type":"string","minLength":1},"uniqueItems":true},"specialists":{"type":"array","items":{"type":"string","minLength":1}},"side_effects":{"type":"boolean"}},"additionalProperties":false}

@@ -1,0 +1,24 @@
+# Production template. Replace addresses/paths through deployment templating.
+# The application reads only /run/openbao/token and never receives OPENBAO_TOKEN.
+
+vault {
+  address = "https://openbao.internal:8200"
+}
+
+auto_auth {
+  method "jwt" {
+    mount_path = "auth/jwt"
+    config = {
+      path                          = "/var/run/secrets/workload.jwt"
+      role                          = "skills-runtime"
+      remove_jwt_after_reading      = false
+    }
+  }
+
+  sink "file" {
+    config = {
+      path = "/run/openbao/token"
+      mode = 0640
+    }
+  }
+}
